@@ -4,6 +4,7 @@ version = "0.1.0"
 description = ""
 authors = ["JuanFe <jmartinezbernal02@gmail.com>"]
 readme = "README.md"
+packages = [{ include = "src" }]
 
 [tool.poetry.dependencies]
 python = "^3.12"
@@ -13,6 +14,12 @@ kaleido = "^1.4.0"
 nbformat = "^5.11.1"
 lightgbm = "^4.7.0"
 scikit-learn = "^1.9.1"
+mlflow = "^3.16.1"
+optuna = "^5.0.0"
+catboost = "^1.2.10"
+xgboost = "^3.4.1"
+requests = "^2.34.2"
+python-dotenv = "^1.2.3"
 
 
 [tool.poetry.group.dev.dependencies]
