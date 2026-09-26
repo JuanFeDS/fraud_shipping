@@ -1,22 +1,11 @@
-"""Registro de experimentos en MLflow con backend local."""
-
-from pathlib import Path
+"""Registro de experimentos en MLflow: parámetros, métricas, dataset y curva de ganancia de cada configuración."""
 
 import mlflow
 import plotly.express as px
 
 from fraude_shipping.experimentacion.validacion import validacion_cruzada
 from fraude_shipping.ganancia import curva_ganancia
-
-RAIZ_PROYECTO = Path(__file__).resolve().parents[3]
-
-
-def configurar_mlflow(nombre_experimento):
-    """Apunta MLflow a la base SQLite del proyecto y activa el experimento, creándolo si no existe."""
-    mlflow.set_tracking_uri(f'sqlite:///{(RAIZ_PROYECTO / "mlflow.db").as_posix()}')
-    if mlflow.get_experiment_by_name(nombre_experimento) is None:
-        mlflow.create_experiment(nombre_experimento, artifact_location=(RAIZ_PROYECTO / 'mlruns').as_uri())
-    mlflow.set_experiment(nombre_experimento)
+from fraude_shipping.registro import registrar_dataset
 
 
 def _graficar_curva_ganancia(datos, resultado, nombre_run):
@@ -38,6 +27,8 @@ def ejecutar_experimento(
         mlflow.set_tags({'modelo': nombre_modelo, **(etiquetas or {})})
         mlflow.log_params({'modelo': nombre_modelo, 'numero_features': len(features), **parametros})
         mlflow.log_dict({'features': list(features), 'columnas_tasa': list(columnas_tasa)}, 'features.json')
+        # dict.fromkeys evita columnas repetidas cuando j es feature y además se le calcula la tasa
+        registrar_dataset(datos[list(dict.fromkeys([*features, *columnas_tasa, 'fraude']))], 'features', 'training')
         mlflow.log_metrics(resultado.resumen)
         mlflow.log_figure(_graficar_curva_ganancia(datos, resultado, nombre_run), 'curva_ganancia.html')
     return resultado

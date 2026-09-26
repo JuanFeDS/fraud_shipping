@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from fraude_shipping import registro
 from fraude_shipping.produccion.pipeline import PARAMETROS_LIGHTGBM, PipelineFraude
 
 TAMANO_SINTETICO = 600
@@ -65,3 +66,10 @@ def fixture_datos_nuevos(datos):
 def fixture_pipeline(datos_train):
     """Pipeline chico entrenado con el dataset sintético."""
     return PipelineFraude(parametros=PARAMETROS_RAPIDOS).ajustar(datos_train)
+
+
+@pytest.fixture(name='mlflow_temporal')
+def fixture_mlflow_temporal(tmp_path, monkeypatch):
+    """Redirige la base, los artefactos y el registry de MLflow a una carpeta temporal para no tocar el mlflow.db real."""
+    monkeypatch.setattr(registro, 'RAIZ_PROYECTO', tmp_path)
+    return tmp_path
