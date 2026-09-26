@@ -19,10 +19,14 @@ optuna = "^5.0.0"
 catboost = "^1.2.10"
 xgboost = "^3.4.1"
 shap = "^0.52.0"
+fastapi = "^0.141.1"
+uvicorn = "^0.54.0"
 
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^7.3.0"
+pytest = "^9.1.1"
+httpx = "^0.28.1"
 
 [build-system]
 requires = ["poetry-core"]
