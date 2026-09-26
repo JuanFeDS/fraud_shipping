@@ -23,8 +23,24 @@ CARPETA_PAQUETE = Path(__file__).resolve().parent
 NOMBRE_MODELO_REGISTRADO = 'fraude_shipping'
 ALIAS_PRODUCCION = 'champion'
 METODOS_PREDICCION = ('predict', 'predict_proba')
+# Tag que MLflow muestra como descripción en la UI de experimentos y runs
+ETIQUETA_DESCRIPCION = 'mlflow.note.content'
+NOMBRE_RUN_VALIDACION = 'validacion_pipeline'
+DESCRIPCION_MODELO = (
+    'Pipeline productivo de prevención de fraude: construye las features del conjunto `candidatas` '
+    '(tasa y frecuencia de `j`, país agrupado, perfil `o`/`n`/`p`, hora), estima la probabilidad de fraude '
+    'con LightGBM tuneado y decide aprobar o rechazar con un umbral que maximiza la ganancia '
+    '(+25% del monto por legítima aprobada, -100% por fraude aprobado).\n\n'
+    'Uso: `predict` devuelve `probabilidad_fraude` y `decision`; con `params={"metodo": "predict_proba"}` '
+    'devuelve solo la probabilidad. El alias `champion` apunta a la versión en producción.'
+)
 # Dependencias explícitas: inferirlas obliga a MLflow a cargar el modelo en un subproceso
 REQUISITOS_MODELO = [f'{paquete}=={version(paquete)}' for paquete in ('lightgbm', 'pandas', 'scikit-learn', 'joblib')]
+
+
+def formatear_numero(valor, decimales=0):
+    """Número con formato español para las descripciones: punto de miles y coma decimal (150.000 o 78,9)."""
+    return f'{valor:,.{decimales}f}'.translate(str.maketrans(',.', '.,'))
 
 
 def conectar_mlflow():
@@ -75,13 +91,49 @@ class ModeloFraudeMlflow(mlflow.pyfunc.PythonModel):
         return self.pipeline.predecir(model_input)
 
 
-def registrar_pipeline(ruta_pipeline, datos_entrenamiento):
-    """Registra el pipeline guardado como nueva versión del modelo y le asigna el alias de producción."""
-    entrada = datos_entrenamiento.drop(columns='fraude', errors='ignore')
-    # La firma se infiere con todo train: con pocas filas, columnas que admiten nulos quedarían como obligatorias
-    firma = infer_signature(
-        entrada, PipelineFraude.cargar(ruta_pipeline).predecir(entrada.head(1000)), params={'metodo': 'predict'}
+def buscar_ultima_validacion():
+    """Último run de validación del pipeline en el experimento activo, o None si todavía no se validó."""
+    runs = mlflow.search_runs(
+        filter_string=f"attributes.run_name = '{NOMBRE_RUN_VALIDACION}'", order_by=['attributes.start_time DESC'],
+        max_results=1, output_format='list',
     )
+    return runs[0] if runs else None
+
+
+def _documentar_version(version_registrada, pipeline, filas_entrenamiento, validacion):
+    """Descripción del modelo y de la versión, y tags de la versión con sus métricas para verlas en el registry."""
+    cliente = MlflowClient()
+    cliente.update_registered_model(NOMBRE_MODELO_REGISTRADO, description=DESCRIPCION_MODELO)
+    tags = {'umbral': pipeline.umbral, 'filas_entrenamiento': filas_entrenamiento}
+    descripcion = (
+        f'Entrenado con {formatear_numero(filas_entrenamiento)} transacciones etiquetadas. '
+        f'Umbral de decisión: {formatear_numero(pipeline.umbral, 2)}.'
+    )
+    if validacion is not None:
+        metricas = validacion.data.metrics
+        tags.update({
+            'ganancia_pct_maxima': round(metricas['ganancia_pct_maxima_media'], 2),
+            'auc_roc': round(metricas['auc_roc_media'], 3),
+            'auc_pr': round(metricas['auc_pr_media'], 3),
+            'run_validacion': validacion.info.run_id,
+        })
+        descripcion += (
+            f" Validación con 5 folds nuevos (run {validacion.info.run_id}): "
+            f"{formatear_numero(metricas['ganancia_pct_maxima_media'], 1)}% "
+            f"± {formatear_numero(metricas['ganancia_pct_maxima_desvio'], 1)} de la ganancia máxima, "
+            f"AUC-ROC {formatear_numero(metricas['auc_roc_media'], 3)} y AUC-PR {formatear_numero(metricas['auc_pr_media'], 3)}."
+        )
+    cliente.update_model_version(NOMBRE_MODELO_REGISTRADO, version_registrada, description=descripcion)
+    for clave, valor in tags.items():
+        cliente.set_model_version_tag(NOMBRE_MODELO_REGISTRADO, version_registrada, clave, str(valor))
+
+
+def registrar_pipeline(ruta_pipeline, datos_entrenamiento, validacion=None):
+    """Registra el pipeline como nueva versión documentada del modelo y le asigna el alias de producción."""
+    entrada = datos_entrenamiento.drop(columns='fraude', errors='ignore')
+    pipeline = PipelineFraude.cargar(ruta_pipeline)
+    # La firma se infiere con todo train: con pocas filas, columnas que admiten nulos quedarían como obligatorias
+    firma = infer_signature(entrada, pipeline.predecir(entrada.head(1000)), params={'metodo': 'predict'})
     informacion = mlflow.pyfunc.log_model(
         name='pipeline',
         python_model=ModeloFraudeMlflow(),
@@ -94,6 +146,7 @@ def registrar_pipeline(ruta_pipeline, datos_entrenamiento):
     )
     version_registrada = informacion.registered_model_version
     MlflowClient().set_registered_model_alias(NOMBRE_MODELO_REGISTRADO, ALIAS_PRODUCCION, version_registrada)
+    _documentar_version(version_registrada, pipeline, len(entrada), validacion)
     return version_registrada
 
 

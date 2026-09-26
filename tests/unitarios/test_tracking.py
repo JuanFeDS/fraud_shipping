@@ -17,10 +17,11 @@ def test_ejecutar_experimento_registra_el_run(datos):
     configurar_mlflow('prueba')
     resultado = tracking.ejecutar_experimento(
         construir_features(datos), 'run_prueba', FEATURES, 'lightgbm', PARAMETROS,
-        columnas_tasa=['j'], etiquetas={'etapa': 'test'},
+        columnas_tasa=['j'], etiquetas={'etapa': 'test'}, descripcion='Hipótesis y resultado del experimento',
     )
     run = mlflow.search_runs(filter_string="attributes.run_name = 'run_prueba'").iloc[0]
     assert run['tags.etapa'] == 'test'
+    assert run['tags.mlflow.note.content'] == 'Hipótesis y resultado del experimento'
     assert run['params.numero_features'] == str(len(FEATURES))
     assert run['metrics.umbral'] == pytest.approx(resultado.umbral)
     artefactos = [artefacto.path for artefacto in mlflow.MlflowClient().list_artifacts(run['run_id'])]

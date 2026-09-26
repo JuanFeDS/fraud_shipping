@@ -71,8 +71,13 @@ def test_entrenar_y_validar_registran_en_mlflow(monkeypatch, capsys, rutas):
     artefactos = [artefacto.path for artefacto in MlflowClient().list_artifacts(validacion['run_id'])]
     assert 'metricas_por_fold.json' in artefactos
 
+    assert validacion['tags.decision'] == 'elegido'
+    assert 'Validación del pipeline productivo' in validacion['tags.mlflow.note.content']
+
     version = MlflowClient().get_model_version_by_alias(NOMBRE_MODELO_REGISTRADO, ALIAS_PRODUCCION)
+    assert version.tags['run_validacion'] == validacion['run_id']
     entrenamiento = mlflow.get_run(version.run_id)
+    assert entrenamiento.data.tags['decision'] == 'produccion'
     assert entrenamiento.info.run_name == 'entrenamiento_pipeline'
     assert entrenamiento.inputs.dataset_inputs[0].dataset.name == 'dataset'
 

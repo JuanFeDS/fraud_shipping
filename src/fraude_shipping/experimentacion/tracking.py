@@ -5,7 +5,7 @@ import plotly.express as px
 
 from fraude_shipping.experimentacion.validacion import validacion_cruzada
 from fraude_shipping.ganancia import curva_ganancia
-from fraude_shipping.registro import registrar_dataset
+from fraude_shipping.registro import ETIQUETA_DESCRIPCION, registrar_dataset
 
 
 def _graficar_curva_ganancia(datos, resultado, nombre_run):
@@ -18,13 +18,15 @@ def _graficar_curva_ganancia(datos, resultado, nombre_run):
 
 def ejecutar_experimento(
     datos, nombre_run, features, nombre_modelo, parametros=None, columnas_tasa=(), etiquetas=None, folds=None,
-    anidado=False, pesos=None,
+    anidado=False, pesos=None, descripcion=None,
 ):
     """Corre la validación cruzada de una configuración y registra parámetros, métricas y artefactos en MLflow."""
     parametros = parametros or {}
     resultado = validacion_cruzada(datos, features, nombre_modelo, parametros, columnas_tasa, folds, pesos)
     with mlflow.start_run(run_name=nombre_run, nested=anidado):
         mlflow.set_tags({'modelo': nombre_modelo, **(etiquetas or {})})
+        if descripcion:
+            mlflow.set_tag(ETIQUETA_DESCRIPCION, descripcion)
         mlflow.log_params({'modelo': nombre_modelo, 'numero_features': len(features), **parametros})
         mlflow.log_dict({'features': list(features), 'columnas_tasa': list(columnas_tasa)}, 'features.json')
         # dict.fromkeys evita columnas repetidas cuando j es feature y además se le calcula la tasa

@@ -11,8 +11,11 @@ from fraude_shipping.produccion.pipeline import PipelineFraude
 from fraude_shipping.registro import (
     ALIAS_PRODUCCION,
     NOMBRE_MODELO_REGISTRADO,
+    NOMBRE_RUN_VALIDACION,
+    buscar_ultima_validacion,
     configurar_mlflow,
     descargar_pipeline,
+    formatear_numero,
     registrar_dataset,
     registrar_pipeline,
 )
@@ -128,3 +131,41 @@ def test_descargar_pipeline_por_alias_o_numero(tmp_path, pipeline, datos_train, 
         PipelineFraude.cargar(destino).predecir_probabilidad(datos_nuevos), pipeline.predecir_probabilidad(datos_nuevos)
     )
     assert descargar_pipeline(destino, '1')['version'] == '1'
+
+
+@pytest.mark.usefixtures('mlflow_temporal')
+def test_version_registrada_queda_documentada(tmp_path, pipeline, datos_train):
+    """Sin validación, la versión describe el entrenamiento; con validación, suma sus métricas y el enlace al run."""
+    ruta = tmp_path / 'pipeline.joblib'
+    pipeline.guardar(ruta)
+    configurar_mlflow('prueba')
+    assert buscar_ultima_validacion() is None
+
+    with mlflow.start_run():
+        sin_validacion = registrar_pipeline(ruta, datos_train)
+    with mlflow.start_run(run_name=NOMBRE_RUN_VALIDACION):
+        mlflow.log_metrics({
+            'ganancia_pct_maxima_media': 78.88, 'ganancia_pct_maxima_desvio': 1.5, 'auc_roc_media': 0.89, 'auc_pr_media': 0.474,
+        })
+    validacion = buscar_ultima_validacion()
+    with mlflow.start_run():
+        con_validacion = registrar_pipeline(ruta, datos_train, validacion)
+
+    cliente = MlflowClient()
+    assert 'LightGBM' in cliente.get_registered_model(NOMBRE_MODELO_REGISTRADO).description
+    primera = cliente.get_model_version(NOMBRE_MODELO_REGISTRADO, sin_validacion)
+    assert f'{formatear_numero(len(datos_train))} transacciones' in primera.description
+    assert primera.tags['umbral'] == str(pipeline.umbral)
+    assert 'run_validacion' not in primera.tags
+    segunda = cliente.get_model_version(NOMBRE_MODELO_REGISTRADO, con_validacion)
+    assert '78,9%' in segunda.description
+    assert segunda.tags['run_validacion'] == validacion.info.run_id
+    assert segunda.tags['ganancia_pct_maxima'] == '78.88'
+
+
+@pytest.mark.parametrize(('valor', 'decimales', 'esperado'), [
+    (150000, 0, '150.000'), (78.88, 1, '78,9'), (0.15, 2, '0,15'), (1234567.891, 2, '1.234.567,89'), (0.890, 3, '0,890'),
+])
+def test_formatear_numero_en_espanol(valor, decimales, esperado):
+    """Punto de miles y coma decimal, como se escriben los números en español."""
+    assert formatear_numero(valor, decimales) == esperado

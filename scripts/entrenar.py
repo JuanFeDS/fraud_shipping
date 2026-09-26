@@ -8,7 +8,8 @@ import mlflow
 from fraude_shipping.features import cargar_datos
 from fraude_shipping.produccion.pipeline import RUTA_MODELO, PipelineFraude
 from fraude_shipping.registro import (
-    ALIAS_PRODUCCION, NOMBRE_MODELO_REGISTRADO, configurar_mlflow, registrar_dataset, registrar_pipeline,
+    ALIAS_PRODUCCION, ETIQUETA_DESCRIPCION, NOMBRE_MODELO_REGISTRADO, buscar_ultima_validacion, configurar_mlflow,
+    formatear_numero, registrar_dataset, registrar_pipeline,
 )
 
 RUTA_DATOS = Path(__file__).resolve().parents[1] / 'data' / 'raw' / 'dataset.csv'
@@ -18,11 +19,20 @@ NOMBRE_EXPERIMENTO = 'fraude_shipping'
 def registrar_entrenamiento(datos, ruta_datos, pipeline, ruta_modelo):
     """Registra el entrenamiento como run de MLflow y el pipeline como nueva versión en el model registry."""
     configurar_mlflow(NOMBRE_EXPERIMENTO)
+    validacion = buscar_ultima_validacion()
+    descripcion = (
+        f'Entrenamiento del pipeline productivo con todo el dataset ({formatear_numero(len(datos))} transacciones) y los '
+        f'hiperparámetros tuneados. Se registra como nueva versión de {NOMBRE_MODELO_REGISTRADO} con alias '
+        f'"{ALIAS_PRODUCCION}".'
+    )
     with mlflow.start_run(run_name='entrenamiento_pipeline'):
-        mlflow.set_tags({'etapa': 'produccion', 'modelo': 'lightgbm'})
+        mlflow.set_tags({
+            'etapa': 'produccion', 'modelo': 'lightgbm', 'decision': 'produccion', 'conjunto_features': 'candidatas',
+            'validacion': 'sin_validacion', 'origen': 'scripts/entrenar.py', ETIQUETA_DESCRIPCION: descripcion,
+        })
         mlflow.log_params({**pipeline.parametros, 'umbral': pipeline.umbral})
         registrar_dataset(datos, 'dataset', 'training', fuente=ruta_datos)
-        return registrar_pipeline(ruta_modelo, datos)
+        return registrar_pipeline(ruta_modelo, datos, validacion)
 
 
 def main():
