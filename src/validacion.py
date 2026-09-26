@@ -40,7 +40,7 @@ def crear_folds(fraude, numero_folds=NUMERO_FOLDS, semilla=SEMILLA):
     return list(divisor.split(np.zeros(len(fraude)), fraude))
 
 
-def _agregar_tasas_fraude(train, validacion, columnas_tasa):
+def agregar_tasas_fraude(train, validacion, columnas_tasa):
     """Tasa de fraude por categoría: out-of-fold interno en train y ajustada con todo train en validación."""
     train = train.copy()
     validacion = validacion.copy()
@@ -71,7 +71,7 @@ def validacion_cruzada(datos, features, nombre_modelo, parametros=None, columnas
     probabilidad_oof = np.zeros(len(datos))
     modelos = []
     for indices_train, indices_validacion in folds:
-        train, validacion = _agregar_tasas_fraude(datos.iloc[indices_train], datos.iloc[indices_validacion], columnas_tasa)
+        train, validacion = agregar_tasas_fraude(datos.iloc[indices_train], datos.iloc[indices_validacion], columnas_tasa)
         modelo = crear_modelo(nombre_modelo, columnas_modelo, parametros)
         argumentos_fit = {} if pesos is None else {'sample_weight': pesos.iloc[indices_train].to_numpy()}
         modelo.fit(train[columnas_modelo], train['fraude'], **argumentos_fit)
