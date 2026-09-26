@@ -5,3 +5,4 @@ __pycache__/
 data/interim/
 models/
 data/predicciones/
+.coverage

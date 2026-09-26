@@ -27,7 +27,18 @@ uvicorn = "^0.54.0"
 ipykernel = "^7.3.0"
 pytest = "^9.1.1"
 httpx = "^0.28.1"
+pytest-cov = "^7.1.0"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov --cov-report=term-missing"
+
+[tool.coverage.run]
+source = ["src/fraude_shipping", "scripts"]
+
+[tool.coverage.report]
+fail_under = 80
