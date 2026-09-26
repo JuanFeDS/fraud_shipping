@@ -1,12 +1,18 @@
-"""Integración con MLflow: base local del proyecto, datasets de cada run y model registry del pipeline productivo."""
+"""Integración con MLflow (servidor remoto o base local): datasets de cada run y model registry del pipeline."""
 
+import json
+import os
+import shutil
+import tempfile
+from datetime import datetime, timezone
 from importlib.metadata import version
 from pathlib import Path
 
 import mlflow
+import mlflow.artifacts
 import mlflow.data
-import pandas as pd
 import mlflow.pyfunc
+import pandas as pd
 from mlflow import MlflowClient
 from mlflow.models import infer_signature
 
@@ -21,11 +27,20 @@ METODOS_PREDICCION = ('predict', 'predict_proba')
 REQUISITOS_MODELO = [f'{paquete}=={version(paquete)}' for paquete in ('lightgbm', 'pandas', 'scikit-learn', 'joblib')]
 
 
+def conectar_mlflow():
+    """Apunta MLflow al servidor de MLFLOW_TRACKING_URI si está definida o, si no, a la base SQLite del proyecto."""
+    uri_servidor = os.environ.get('MLFLOW_TRACKING_URI')
+    mlflow.set_tracking_uri(uri_servidor or f'sqlite:///{(RAIZ_PROYECTO / "mlflow.db").as_posix()}')
+    return uri_servidor
+
+
 def configurar_mlflow(nombre_experimento):
-    """Apunta MLflow a la base SQLite del proyecto y activa el experimento, creándolo si no existe."""
-    mlflow.set_tracking_uri(f'sqlite:///{(RAIZ_PROYECTO / "mlflow.db").as_posix()}')
+    """Conecta MLflow y activa el experimento, creándolo si no existe."""
+    uri_servidor = conectar_mlflow()
     if mlflow.get_experiment_by_name(nombre_experimento) is None:
-        mlflow.create_experiment(nombre_experimento, artifact_location=(RAIZ_PROYECTO / 'mlruns').as_uri())
+        # Con servidor remoto los artefactos van a su almacén (GCS); en local, a la carpeta mlruns del proyecto
+        ubicacion = None if uri_servidor else (RAIZ_PROYECTO / 'mlruns').as_uri()
+        mlflow.create_experiment(nombre_experimento, artifact_location=ubicacion)
     mlflow.set_experiment(nombre_experimento)
 
 
@@ -80,3 +95,28 @@ def registrar_pipeline(ruta_pipeline, datos_entrenamiento):
     version_registrada = informacion.registered_model_version
     MlflowClient().set_registered_model_alias(NOMBRE_MODELO_REGISTRADO, ALIAS_PRODUCCION, version_registrada)
     return version_registrada
+
+
+def descargar_pipeline(ruta_destino, referencia=ALIAS_PRODUCCION):
+    """Descarga el pipeline de una versión registrada (alias o número) y deja su metadata en un JSON al lado."""
+    cliente = MlflowClient()
+    version_modelo = (
+        cliente.get_model_version(NOMBRE_MODELO_REGISTRADO, referencia) if referencia.isdigit()
+        else cliente.get_model_version_by_alias(NOMBRE_MODELO_REGISTRADO, referencia)
+    )
+    ruta_destino = Path(ruta_destino)
+    ruta_destino.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory() as carpeta_temporal:
+        carpeta_modelo = mlflow.artifacts.download_artifacts(
+            artifact_uri=f'models:/{NOMBRE_MODELO_REGISTRADO}/{version_modelo.version}', dst_path=carpeta_temporal
+        )
+        shutil.copy(next((Path(carpeta_modelo) / 'artifacts').glob('*.joblib')), ruta_destino)
+    metadata = {
+        'modelo': NOMBRE_MODELO_REGISTRADO,
+        'version': str(version_modelo.version),
+        'alias': list(version_modelo.aliases),
+        'run_id': version_modelo.run_id,
+        'descargado': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+    }
+    ruta_destino.with_suffix('.json').write_text(json.dumps(metadata, indent=2), encoding='utf-8')
+    return metadata

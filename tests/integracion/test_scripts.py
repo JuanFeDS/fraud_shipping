@@ -75,3 +75,9 @@ def test_entrenar_y_validar_registran_en_mlflow(monkeypatch, capsys, rutas):
     entrenamiento = mlflow.get_run(version.run_id)
     assert entrenamiento.info.run_name == 'entrenamiento_pipeline'
     assert entrenamiento.inputs.dataset_inputs[0].dataset.name == 'dataset'
+
+    descargado = rutas['modelo'].parent / 'descargado.joblib'
+    _ejecutar_script(monkeypatch, 'descargar_modelo.py', '--modelo', descargado)
+    assert descargado.exists()
+    assert descargado.with_suffix('.json').exists()
+    assert 'v1' in capsys.readouterr().out

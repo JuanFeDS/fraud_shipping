@@ -72,4 +72,6 @@ def fixture_pipeline(datos_train):
 def fixture_mlflow_temporal(tmp_path, monkeypatch):
     """Redirige la base, los artefactos y el registry de MLflow a una carpeta temporal para no tocar el mlflow.db real."""
     monkeypatch.setattr(registro, 'RAIZ_PROYECTO', tmp_path)
+    # Si la terminal apunta al MLflow de producción, los tests no deben escribir ahí
+    monkeypatch.delenv('MLFLOW_TRACKING_URI', raising=False)
     return tmp_path

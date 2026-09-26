@@ -1,14 +1,18 @@
 """Integración con MLflow: experimento, datasets y model registry, siempre sobre una base temporal."""
 
+import json
+
 import mlflow
 import numpy as np
 import pytest
 from mlflow import MlflowClient
 
+from fraude_shipping.produccion.pipeline import PipelineFraude
 from fraude_shipping.registro import (
     ALIAS_PRODUCCION,
     NOMBRE_MODELO_REGISTRADO,
     configurar_mlflow,
+    descargar_pipeline,
     registrar_dataset,
     registrar_pipeline,
 )
@@ -23,6 +27,19 @@ def test_configurar_mlflow_crea_y_reutiliza_el_experimento(mlflow_temporal):
     configurar_mlflow('prueba')
     assert (mlflow_temporal / 'mlflow.db').exists()
     assert mlflow.get_experiment_by_name('prueba').experiment_id == experimento.experiment_id
+
+
+def test_configurar_mlflow_usa_el_servidor_de_la_variable_de_entorno(mlflow_temporal, monkeypatch):
+    """Con MLFLOW_TRACKING_URI definida se usa ese servidor y el experimento no fija una carpeta local de artefactos."""
+    uri_servidor = f'sqlite:///{(mlflow_temporal / "servidor.db").as_posix()}'
+    monkeypatch.setenv('MLFLOW_TRACKING_URI', uri_servidor)
+    monkeypatch.chdir(mlflow_temporal)
+    configurar_mlflow('prueba')
+    assert mlflow.get_tracking_uri() == uri_servidor
+    assert not (mlflow_temporal / 'mlflow.db').exists()
+    experimento = mlflow.get_experiment_by_name('prueba')
+    # Sin ubicación explícita, el servidor usa su raíz de artefactos más el id del experimento
+    assert experimento.artifact_location.endswith(f'/{experimento.experiment_id}')
 
 
 @pytest.mark.usefixtures('mlflow_temporal')
@@ -89,3 +106,25 @@ def test_metodo_predict_proba_devuelve_solo_la_probabilidad(tmp_path, pipeline, 
 
     with pytest.raises(Exception, match='metodo debe ser uno de'):
         modelo.predict(datos_nuevos, params={'metodo': 'decision_function'})
+
+
+@pytest.mark.usefixtures('mlflow_temporal')
+def test_descargar_pipeline_por_alias_o_numero(tmp_path, pipeline, datos_train, datos_nuevos):
+    """Descarga la versión pedida con su metadata, y el pipeline descargado predice igual que el original."""
+    ruta = tmp_path / 'pipeline.joblib'
+    pipeline.guardar(ruta)
+    configurar_mlflow('prueba')
+    with mlflow.start_run():
+        registrar_pipeline(ruta, datos_train)
+    with mlflow.start_run():
+        registrar_pipeline(ruta, datos_train)
+
+    destino = tmp_path / 'descargado' / 'pipeline_fraude.joblib'
+    metadata = descargar_pipeline(destino)
+    assert metadata['version'] == '2'
+    assert metadata['alias'] == [ALIAS_PRODUCCION]
+    assert json.loads(destino.with_suffix('.json').read_text(encoding='utf-8')) == metadata
+    np.testing.assert_array_equal(
+        PipelineFraude.cargar(destino).predecir_probabilidad(datos_nuevos), pipeline.predecir_probabilidad(datos_nuevos)
+    )
+    assert descargar_pipeline(destino, '1')['version'] == '1'
