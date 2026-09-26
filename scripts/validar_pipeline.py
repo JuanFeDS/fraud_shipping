@@ -3,17 +3,20 @@
 import argparse
 from pathlib import Path
 
+import mlflow
 import numpy as np
 import pandas as pd
 
 from fraude_shipping.experimentacion.validacion import ResultadoValidacion, metricas_fold
 from fraude_shipping.features import cargar_datos, crear_folds
 from fraude_shipping.ganancia import umbral_optimo
-from fraude_shipping.produccion.pipeline import UMBRAL, PipelineFraude
+from fraude_shipping.produccion.pipeline import PARAMETROS_LIGHTGBM, UMBRAL, PipelineFraude
+from fraude_shipping.registro import configurar_mlflow, registrar_dataset
 
 RUTA_DATOS = Path(__file__).resolve().parents[1] / 'data' / 'raw' / 'dataset.csv'
 # Los mismos folds nuevos con los que se validó el tuning en el notebook 04
 SEMILLA_VALIDACION = 7
+NOMBRE_EXPERIMENTO = 'fraude_shipping'
 
 
 def validar(datos, folds):
@@ -39,10 +42,22 @@ def validar(datos, folds):
     return ResultadoValidacion(probabilidad_oof, umbral, metricas_por_fold, pipelines)
 
 
+def registrar_validacion(datos, ruta_datos, resultado):
+    """Registra la validación como run de MLflow: parámetros, dataset, métricas resumidas y por fold."""
+    configurar_mlflow(NOMBRE_EXPERIMENTO)
+    with mlflow.start_run(run_name='validacion_pipeline'):
+        mlflow.set_tags({'etapa': 'validacion_pipeline', 'modelo': 'lightgbm'})
+        mlflow.log_params({**PARAMETROS_LIGHTGBM, 'umbral': UMBRAL, 'semilla_folds': SEMILLA_VALIDACION})
+        registrar_dataset(datos, 'dataset', 'training', fuente=ruta_datos)
+        mlflow.log_metrics(resultado.resumen)
+        mlflow.log_table(resultado.metricas_por_fold.rename_axis('fold').reset_index(), 'metricas_por_fold.json')
+
+
 def main():
     """Corre la validación e imprime las métricas por fold y su resumen."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--datos', type=Path, default=RUTA_DATOS, help='CSV con transacciones etiquetadas')
+    parser.add_argument('--mlflow', action='store_true', help='Registra la validación como run de MLflow')
     argumentos = parser.parse_args()
 
     datos = cargar_datos(argumentos.datos)
@@ -52,6 +67,9 @@ def main():
     print(resultado.metricas_por_fold.round(3).to_string())
     print('\nResumen:')
     print(pd.Series(resultado.resumen).round(3).to_string())
+    if argumentos.mlflow:
+        registrar_validacion(datos, argumentos.datos, resultado)
+        print('Validación registrada en MLflow (run validacion_pipeline)')
 
 
 if __name__ == '__main__':

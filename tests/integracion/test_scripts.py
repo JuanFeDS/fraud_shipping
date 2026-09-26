@@ -4,8 +4,12 @@ import runpy
 import sys
 from pathlib import Path
 
+import mlflow
 import pandas as pd
 import pytest
+from mlflow import MlflowClient
+
+from fraude_shipping.registro import ALIAS_PRODUCCION, NOMBRE_MODELO_REGISTRADO
 
 CARPETA_SCRIPTS = Path(__file__).resolve().parents[2] / 'scripts'
 
@@ -51,3 +55,23 @@ def test_validar_pipeline(monkeypatch, capsys, rutas):
     salida = capsys.readouterr().out
     assert 'Fold 5/5 listo' in salida
     assert 'ganancia_pct_maxima_media' in salida
+
+
+@pytest.mark.usefixtures('mlflow_temporal')
+def test_entrenar_y_validar_registran_en_mlflow(monkeypatch, capsys, rutas):
+    """Con --mlflow, validar registra su run y entrenar publica el pipeline en el registry con el alias de producción."""
+    _ejecutar_script(monkeypatch, 'validar_pipeline.py', '--datos', rutas['etiquetados'], '--mlflow')
+    _ejecutar_script(
+        monkeypatch, 'entrenar.py', '--datos', rutas['etiquetados'], '--modelo', rutas['modelo'], '--mlflow',
+    )
+    assert 'con alias "champion"' in capsys.readouterr().out
+
+    validacion = mlflow.search_runs(filter_string="attributes.run_name = 'validacion_pipeline'").iloc[0]
+    assert 'metrics.ganancia_pct_maxima_media' in validacion
+    artefactos = [artefacto.path for artefacto in MlflowClient().list_artifacts(validacion['run_id'])]
+    assert 'metricas_por_fold.json' in artefactos
+
+    version = MlflowClient().get_model_version_by_alias(NOMBRE_MODELO_REGISTRADO, ALIAS_PRODUCCION)
+    entrenamiento = mlflow.get_run(version.run_id)
+    assert entrenamiento.info.run_name == 'entrenamiento_pipeline'
+    assert entrenamiento.inputs.dataset_inputs[0].dataset.name == 'dataset'
