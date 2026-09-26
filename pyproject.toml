@@ -18,8 +18,6 @@ mlflow = "^3.16.1"
 optuna = "^5.0.0"
 catboost = "^1.2.10"
 xgboost = "^3.4.1"
-requests = "^2.34.2"
-python-dotenv = "^1.2.3"
 
 
 [tool.poetry.group.dev.dependencies]
