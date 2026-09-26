@@ -123,5 +123,6 @@ class PipelineFraude:
         """Categóricas con las categorías de train; un valor no visto queda como nulo para LightGBM."""
         features = features.copy()
         for columna, categorias in self.categorias.items():
-            features[columna] = pd.Categorical(features[columna].fillna('nulo'), categories=categorias)
+            valores = features[columna].fillna('nulo')
+            features[columna] = pd.Categorical(valores.where(valores.isin(categorias)), categories=categorias)
         return features
