@@ -55,11 +55,24 @@ Brasil (74%) y Argentina (21%) suman el 95% de las transacciones y tienen tasas 
 ### 8. 📈 El fraude no es estable en el tiempo
 La tasa diaria oscila entre **2,2%** y **6,6%**, con un pico sostenido cerca de 6,5% entre el 26 de marzo y el 2 de abril. El periodo coincide con el inicio de las cuarentenas por COVID-19, un contexto atípico de consumo.
 
+### 9. 🔗 Pocas variables miden lo mismo
+- **Numéricas (Spearman)**: solo 3 de los 78 pares superan 0,5 en valor absoluto:
+
+| Par | Correlación |
+|---|---|
+| `d` – `m` | 0,74 |
+| `f` – `l` | 0,67 |
+| `e` – `monto` | −0,65 |
+
+  Los dos primeros coinciden con los pares que comparten nulos. Las variables de historial (`f`, `l`, `m`, `d`, `n`) tienen además correlaciones moderadas entre sí, y todas se relacionan de forma negativa con `score`. `k` no se correlaciona con nada.
+- **Categóricas (V de Cramér con corrección de sesgo)**: son prácticamente independientes. La asociación más alta es la de `g` y `j` (0,18). Sin corregir, `j` parecía asociada con `o` y `p` (0,24 y 0,26), pero era ruido de sus 8.324 categorías: corregida baja a 0,05 y 0,11.
+
 ## 🛠️ Implicaciones para el modelado
 
 - 📏 **Evaluar por ganancia**, no por accuracy, y optimizar el umbral de decisión con la función de costo del negocio.
 - 🕰️ Verificar si el comportamiento depende del tiempo antes de elegir el esquema de validación (en el baseline, la CV aleatoria y la temporal dieron resultados equivalentes).
 - 🕳️ Mantener los **nulos como información** (sobre todo en `o`) en lugar de imputarlos a ciegas.
+- 🔗 Al leer importancias o SHAP, interpretar **`d`/`m`, `f`/`l` y `e`/`monto` como pares**: el modelo puede repartir el crédito entre ellas de forma arbitraria.
 - 🔤 Codificar `j` (8.324 categorías) con frequency/target encoding y agrupar los países poco frecuentes de `g`.
 - 📐 Transformar a escala log las variables de cola larga (`c`, `e`, `f`, `monto`) si se usan modelos lineales.
 - 📡 En producción, **monitorear el drift** de la tasa de fraude y de las variables principales.
