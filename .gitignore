@@ -2,3 +2,4 @@
 mlflow.db
 mlruns/
 __pycache__/
+data/interim/
