@@ -1,0 +1,15 @@
+# Qué se sube a Cloud Build. Existe para que models/ se incluya aunque .gitignore lo excluya:
+# sin este archivo, gcloud usa .gitignore y la imagen de la API se construiría sin el modelo.
+.git/
+.venv/
+__pycache__/
+data/
+notebooks/
+docs/
+sessions/
+tests/
+mlruns/
+mlflow.db
+.coverage
+.env
+.pytest_cache/

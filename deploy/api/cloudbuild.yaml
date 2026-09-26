@@ -1,0 +1,6 @@
+# Construye la imagen de la API desde la raíz del repo (necesita src/ y models/) con el Dockerfile de deploy/api
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ['build', '-f', 'deploy/api/Dockerfile', '-t', '${_IMAGEN}', '.']
+images:
+  - '${_IMAGEN}'
