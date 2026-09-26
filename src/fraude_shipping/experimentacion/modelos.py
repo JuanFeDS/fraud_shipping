@@ -10,9 +10,8 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, QuantileTransformer
 from xgboost import XGBClassifier
 
-from src.features import columnas_categoricas
+from fraude_shipping.features import SEMILLA, columnas_categoricas
 
-SEMILLA = 42
 MINIMO_FRECUENCIA_CATEGORIA = 100
 
 

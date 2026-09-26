@@ -5,14 +5,12 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score, roc_auc_score
-from sklearn.model_selection import StratifiedKFold
 
-from src.features import aplicar_tasa_fraude, ajustar_tasa_fraude, preparar_categoricas, tasa_fraude_oof
-from src.ganancia import metricas_decision, umbral_optimo
-from src.modelos import SEMILLA, crear_modelo
-
-NUMERO_FOLDS = 5
-
+from fraude_shipping.experimentacion.modelos import crear_modelo
+from fraude_shipping.features import (
+    aplicar_tasa_fraude, ajustar_tasa_fraude, crear_folds, preparar_categoricas, tasa_fraude_oof,
+)
+from fraude_shipping.ganancia import metricas_decision, umbral_optimo
 
 @dataclass
 class ResultadoValidacion:
@@ -34,12 +32,6 @@ class ResultadoValidacion:
         return metricas
 
 
-def crear_folds(fraude, numero_folds=NUMERO_FOLDS, semilla=SEMILLA):
-    """Folds estratificados por la etiqueta; con la semilla por defecto son los mismos del baseline."""
-    divisor = StratifiedKFold(n_splits=numero_folds, shuffle=True, random_state=semilla)
-    return list(divisor.split(np.zeros(len(fraude)), fraude))
-
-
 def agregar_tasas_fraude(train, validacion, columnas_tasa):
     """Tasa de fraude por categoría: out-of-fold interno en train y ajustada con todo train en validación."""
     train = train.copy()
@@ -53,7 +45,7 @@ def agregar_tasas_fraude(train, validacion, columnas_tasa):
     return train, validacion
 
 
-def _metricas_fold(fraude, monto, probabilidad, umbral):
+def metricas_fold(fraude, monto, probabilidad, umbral):
     """Métricas de ranking y de negocio de un fold."""
     return {
         'auc_roc': roc_auc_score(fraude, probabilidad),
@@ -80,7 +72,7 @@ def validacion_cruzada(datos, features, nombre_modelo, parametros=None, columnas
 
     umbral = umbral_optimo(datos['fraude'], datos['monto'], probabilidad_oof)
     metricas_por_fold = pd.DataFrame([
-        _metricas_fold(
+        metricas_fold(
             datos['fraude'].iloc[indices_validacion].to_numpy(),
             datos['monto'].iloc[indices_validacion].to_numpy(),
             probabilidad_oof[indices_validacion],

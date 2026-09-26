@@ -2,7 +2,10 @@
 
 import numpy as np
 import pandas as pd
+from sklearn.model_selection import StratifiedKFold
 
+SEMILLA = 42
+NUMERO_FOLDS = 5
 COLUMNAS_CATEGORICAS_ORIGINALES = ['g', 'j', 'o', 'p']
 COLUMNAS_ORIGINALES = [
     'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'monto', 'score',
@@ -51,15 +54,29 @@ def construir_features(datos):
     datos['e_cero'] = (datos['e'] == 0).astype(int)
     datos['monto_entero'] = (datos['monto'].mul(100).round() % 100 == 0).astype(int)
 
-    frecuencia_pais = datos['g'].value_counts()
-    paises_frecuentes = frecuencia_pais[frecuencia_pais >= MINIMO_TRANSACCIONES_PAIS].index
-    datos['g_agrupado'] = datos['g'].where(datos['g'].isin(paises_frecuentes) | datos['g'].isna(), 'Otros')
+    datos['g_agrupado'] = agrupar_paises(datos['g'], obtener_paises_frecuentes(datos['g']))
 
     for nombre, (numerador, denominador) in RATIOS.items():
         datos[nombre] = datos[numerador] / datos[denominador].replace(0, np.nan)
 
-    datos['perfil_onp'] = datos['o'].fillna('nulo') + '_' + datos['n'].astype(str) + '_' + datos['p']
+    datos['perfil_onp'] = crear_perfil_onp(datos)
     return datos
+
+
+def obtener_paises_frecuentes(paises):
+    """Países con al menos MINIMO_TRANSACCIONES_PAIS transacciones."""
+    frecuencia_pais = paises.value_counts()
+    return set(frecuencia_pais[frecuencia_pais >= MINIMO_TRANSACCIONES_PAIS].index)
+
+
+def agrupar_paises(paises, paises_frecuentes):
+    """Reemplaza por "Otros" los países que no están entre los frecuentes; el nulo se mantiene."""
+    return paises.where(paises.isin(paises_frecuentes) | paises.isna(), 'Otros')
+
+
+def crear_perfil_onp(datos):
+    """Combinación de o, n y p, con el nulo de o como categoría propia."""
+    return datos['o'].fillna('nulo') + '_' + datos['n'].astype(int).astype(str) + '_' + datos['p']
 
 
 def columnas_categoricas(columnas):
@@ -97,3 +114,9 @@ def tasa_fraude_oof(categorias, fraude, folds):
             categorias.iloc[indices_validacion], tasa_suavizada, tasa_global
         ).to_numpy()
     return resultado
+
+
+def crear_folds(fraude, numero_folds=NUMERO_FOLDS, semilla=SEMILLA):
+    """Folds estratificados por la etiqueta; con la semilla por defecto son los mismos del baseline."""
+    divisor = StratifiedKFold(n_splits=numero_folds, shuffle=True, random_state=semilla)
+    return list(divisor.split(np.zeros(len(fraude)), fraude))

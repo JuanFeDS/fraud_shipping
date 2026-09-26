@@ -5,10 +5,10 @@ from pathlib import Path
 import mlflow
 import plotly.express as px
 
-from src.ganancia import curva_ganancia
-from src.validacion import validacion_cruzada
+from fraude_shipping.experimentacion.validacion import validacion_cruzada
+from fraude_shipping.ganancia import curva_ganancia
 
-RAIZ_PROYECTO = Path(__file__).resolve().parents[1]
+RAIZ_PROYECTO = Path(__file__).resolve().parents[3]
 
 
 def configurar_mlflow(nombre_experimento):
