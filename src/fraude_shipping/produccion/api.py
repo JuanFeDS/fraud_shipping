@@ -1,8 +1,10 @@
 """API de scoring online: recibe una transacción y devuelve la probabilidad de fraude y la decisión."""
 
+import json
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 from typing import Literal
 
 import pandas as pd
@@ -45,8 +47,13 @@ class Prediccion(BaseModel):
 
 @asynccontextmanager
 async def ciclo_de_vida(aplicacion):
-    """Carga el pipeline una sola vez al iniciar la API."""
-    aplicacion.state.pipeline = PipelineFraude.cargar(os.environ.get('RUTA_MODELO', RUTA_MODELO))
+    """Carga el pipeline una sola vez al iniciar la API, junto con la versión registrada si viene de MLflow."""
+    ruta = Path(os.environ.get('RUTA_MODELO', RUTA_MODELO))
+    aplicacion.state.pipeline = PipelineFraude.cargar(ruta)
+    ruta_metadata = ruta.with_suffix('.json')
+    # Un pipeline entrenado localmente, sin pasar por el registry, no tiene metadata ni versión
+    metadata = json.loads(ruta_metadata.read_text(encoding='utf-8')) if ruta_metadata.exists() else {}
+    aplicacion.state.version_modelo = metadata.get('version')
     yield
 
 
@@ -55,8 +62,12 @@ app = FastAPI(title='Prevención de fraude', lifespan=ciclo_de_vida)
 
 @app.get('/salud')
 def salud(request: Request):
-    """Confirma que la API está arriba y con el modelo cargado."""
-    return {'estado': 'ok', 'umbral': request.app.state.pipeline.umbral}
+    """Confirma que la API está arriba y con qué modelo: versión del registry (si se conoce) y umbral."""
+    return {
+        'estado': 'ok',
+        'version_modelo': getattr(request.app.state, 'version_modelo', None),
+        'umbral': request.app.state.pipeline.umbral,
+    }
 
 
 @app.post('/predecir', response_model=Prediccion)

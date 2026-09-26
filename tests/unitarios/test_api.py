@@ -12,6 +12,7 @@ from fraude_shipping.produccion.api import app
 def fixture_cliente(pipeline):
     """Cliente de la API con el pipeline sintético inyectado, sin leer el artefacto de disco."""
     app.state.pipeline = pipeline
+    app.state.version_modelo = None
     return TestClient(app)
 
 
@@ -25,7 +26,7 @@ def test_salud(cliente, pipeline):
     """El endpoint de salud confirma el modelo cargado y su umbral."""
     respuesta = cliente.get('/salud')
     assert respuesta.status_code == 200
-    assert respuesta.json() == {'estado': 'ok', 'umbral': pipeline.umbral}
+    assert respuesta.json() == {'estado': 'ok', 'version_modelo': None, 'umbral': pipeline.umbral}
 
 
 def test_predecir_devuelve_lo_mismo_que_el_pipeline(cliente, pipeline, datos_nuevos, transaccion):
@@ -65,12 +66,16 @@ def test_campo_obligatorio_faltante_se_rechaza(cliente, transaccion, campo):
     assert cliente.post('/predecir', json=incompleta).status_code == 422
 
 
-def test_al_iniciar_carga_el_artefacto_indicado(tmp_path, monkeypatch, pipeline):
-    """La API lee el pipeline de la ruta de la variable de entorno RUTA_MODELO."""
+@pytest.mark.parametrize(('metadata', 'version_esperada'), [(None, None), ({'version': '3'}, '3')])
+def test_al_iniciar_carga_el_artefacto_indicado(tmp_path, monkeypatch, pipeline, metadata, version_esperada):
+    """La API lee el pipeline de RUTA_MODELO y, si hay metadata del registry al lado, informa su versión."""
     ruta = tmp_path / 'pipeline.joblib'
     pipeline.guardar(ruta)
+    if metadata is not None:
+        ruta.with_suffix('.json').write_text(json.dumps(metadata), encoding='utf-8')
     monkeypatch.setenv('RUTA_MODELO', str(ruta))
     app.state.pipeline = None
     with TestClient(app) as cliente:
-        assert cliente.get('/salud').json()['umbral'] == pipeline.umbral
-        assert app.state.pipeline is not None
+        salud = cliente.get('/salud').json()
+    assert salud['umbral'] == pipeline.umbral
+    assert salud['version_modelo'] == version_esperada
