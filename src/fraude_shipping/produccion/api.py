@@ -5,13 +5,17 @@ import os
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
+from secrets import compare_digest
 from typing import Literal
 
 import pandas as pd
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Security
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 
 from fraude_shipping.produccion.pipeline import RUTA_MODELO, PipelineFraude
+
+ENCABEZADO_API_KEY = APIKeyHeader(name='X-API-Key', auto_error=False)
 
 
 class Transaccion(BaseModel):
@@ -60,6 +64,14 @@ async def ciclo_de_vida(aplicacion):
 app = FastAPI(title='Prevención de fraude', lifespan=ciclo_de_vida)
 
 
+def verificar_api_key(api_key: str | None = Security(ENCABEZADO_API_KEY)):
+    """Exige la API key si la variable FRAUDE_API_KEY está definida; sin ella (desarrollo local) la API queda abierta."""
+    esperada = os.environ.get('FRAUDE_API_KEY')
+    # compare_digest evita que el tiempo de respuesta revele cuántos caracteres de la key coinciden
+    if esperada and not (api_key and compare_digest(api_key.encode(), esperada.encode())):
+        raise HTTPException(status_code=401, detail='API key inválida o ausente')
+
+
 @app.get('/salud')
 def salud(request: Request):
     """Confirma que la API está arriba y con qué modelo: versión del registry (si se conoce) y umbral."""
@@ -70,7 +82,7 @@ def salud(request: Request):
     }
 
 
-@app.post('/predecir', response_model=Prediccion)
+@app.post('/predecir', response_model=Prediccion, dependencies=[Depends(verificar_api_key)])
 def predecir(transaccion: Transaccion, request: Request):
     """Probabilidad de fraude y decisión para una transacción."""
     pipeline = request.app.state.pipeline

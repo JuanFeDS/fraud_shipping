@@ -9,8 +9,9 @@ from fraude_shipping.produccion.api import app
 
 
 @pytest.fixture(name='cliente')
-def fixture_cliente(pipeline):
-    """Cliente de la API con el pipeline sintético inyectado, sin leer el artefacto de disco."""
+def fixture_cliente(pipeline, monkeypatch):
+    """Cliente de la API con el pipeline sintético inyectado y sin API key, salvo que el test la configure."""
+    monkeypatch.delenv('FRAUDE_API_KEY', raising=False)
     app.state.pipeline = pipeline
     app.state.version_modelo = None
     return TestClient(app)
@@ -79,3 +80,22 @@ def test_al_iniciar_carga_el_artefacto_indicado(tmp_path, monkeypatch, pipeline,
         salud = cliente.get('/salud').json()
     assert salud['umbral'] == pipeline.umbral
     assert salud['version_modelo'] == version_esperada
+
+
+@pytest.mark.parametrize(('encabezados', 'codigo_esperado'), [
+    ({}, 401),
+    ({'X-API-Key': 'otra-clave'}, 401),
+    ({'X-API-Key': 'clave-correcta'}, 200),
+])
+def test_api_key_requerida_si_esta_configurada(cliente, transaccion, monkeypatch, encabezados, codigo_esperado):
+    """Con FRAUDE_API_KEY definida, /predecir solo responde a quien envía esa key en el header X-API-Key."""
+    monkeypatch.setenv('FRAUDE_API_KEY', 'clave-correcta')
+    assert cliente.post('/predecir', json=transaccion, headers=encabezados).status_code == codigo_esperado
+
+
+def test_salud_y_documentacion_no_requieren_api_key(cliente, monkeypatch):
+    """/salud y /docs quedan abiertos para poder verificar el servicio y probarlo desde el navegador."""
+    monkeypatch.setenv('FRAUDE_API_KEY', 'clave-correcta')
+    assert cliente.get('/salud').status_code == 200
+    assert cliente.get('/docs').status_code == 200
+    assert 'X-API-Key' in cliente.get('/openapi.json').text
