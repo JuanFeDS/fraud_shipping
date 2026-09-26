@@ -12,9 +12,10 @@ from src.tracking import RAIZ_PROYECTO
 
 URL_EVALUACION = 'https://ai-gateway.vercel.sh/v1/evaluate'
 MODELO_JEV = 'typesafe-ai/jev'
-PROVEEDOR_JEV = 'typesafe-ai'
+PROVEEDORES_JEV = ['typesafe-ai', 'digitalocean']
 LLAMADAS_POR_MINUTO = 28
-INTENTOS = 5
+INTENTOS = 10
+ESPERA_MAXIMA = 60
 ESPERA_TIMEOUT = 60
 CODIGOS_REINTENTABLES = {429, 500, 502, 503, 504}
 
@@ -37,15 +38,16 @@ def _evaluar(sesion, estado, instrucciones):
             'instructions': instrucciones,
             'criteria': {'true': 'the transaction is fraudulent', 'false': 'the transaction is legitimate'},
         }},
-        # El proveedor digitalocean devolvía 503 y 429 de forma intermitente; typesafe-ai responde estable
-        'providerOptions': {'gateway': {'only': [PROVEEDOR_JEV]}},
+        # Ambos proveedores se saturan de forma intermitente (429 "high demand"); con los dos el gateway tiene fallback
+        'providerOptions': {'gateway': {'only': PROVEEDORES_JEV}},
     }
     for intento in range(INTENTOS):
         respuesta = sesion.post(URL_EVALUACION, json=cuerpo, timeout=ESPERA_TIMEOUT)
         if respuesta.status_code not in CODIGOS_REINTENTABLES:
             respuesta.raise_for_status()
             return respuesta.json()['answers']['fraude']['probability']
-        time.sleep(float(respuesta.headers.get('Retry-After', 2 ** intento)))
+        # Sin Retry-After, la saturación del proveedor puede durar minutos: backoff exponencial topado
+        time.sleep(float(respuesta.headers.get('Retry-After', min(2 ** intento, ESPERA_MAXIMA))))
     raise requests.HTTPError(f'Jev no respondió tras {INTENTOS} intentos', response=respuesta)
 
 
