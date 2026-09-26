@@ -3,3 +3,5 @@ mlflow.db
 mlruns/
 __pycache__/
 data/interim/
+models/
+data/predicciones/
