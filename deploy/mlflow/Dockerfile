@@ -1,7 +1,8 @@
 # Servidor de MLflow para Cloud Run: misma versión que el cliente local para evitar incompatibilidades de API
 FROM python:3.12-slim
 
-RUN pip install --no-cache-dir mlflow==3.16.1 psycopg2-binary==2.9.13 google-cloud-storage
+# El extra auth trae Flask-WTF, que la autenticación básica necesita para la protección CSRF
+RUN pip install --no-cache-dir "mlflow[auth]==3.16.1" psycopg2-binary==2.9.13 google-cloud-storage
 
 WORKDIR /app
 COPY iniciar.py .
