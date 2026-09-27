@@ -105,6 +105,6 @@ Superar al baseline (**77,7% de la ganancia máxima**) con cambios que se sosten
 ## ⚠️ Supuestos y limitaciones
 
 - La métrica es **ruidosa**: cambios triviales mueven la ganancia ~0,3 puntos porque cambian el umbral elegido. Solo se consideran mejoras las que se repiten en la mayoría de los folds.
-- La validación es **aleatoria**, no temporal. Si el fraude cambia con el tiempo, el rendimiento en producción puede ser menor.
+- La validación es **aleatoria**, respaldada por la comparación con una CV temporal del [baseline](02_baseline.md): el ranking es equivalente (AUC-ROC 0,872 frente a 0,866) y la ganancia temporal queda ~1,9 puntos abajo, dentro de su desvío (75,6 ± 2,6). Esa comparación se hizo con el baseline, no con el modelo final, y la ganancia varía según la semana que se valida.
 - El resultado depende de que `score` esté disponible al momento de decidir, igual que en el baseline.
 - Los algoritmos distintos de LightGBM se compararon con sus **parámetros por defecto**. XGBoost, en particular, podría mejorar con ajuste.
