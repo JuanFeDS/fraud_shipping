@@ -6,78 +6,78 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score, roc_auc_score
 
-from fraude_shipping.experimentacion.modelos import crear_modelo
+from fraude_shipping.experimentation.models import build_model
 from fraude_shipping.features import (
-    aplicar_tasa_fraude, ajustar_tasa_fraude, crear_folds, preparar_categoricas, tasa_fraude_oof,
+    apply_fraud_rate, fit_fraud_rate, make_folds, oof_fraud_rate, prepare_categoricals,
 )
-from fraude_shipping.ganancia import metricas_decision, umbral_optimo
+from fraude_shipping.profit import decision_metrics, optimal_threshold
 
 @dataclass
-class ResultadoValidacion:
+class ValidationResult:
     """Predicciones out-of-fold, umbral elegido, métricas por fold y modelos entrenados."""
 
-    probabilidad_oof: np.ndarray
-    umbral: float
-    metricas_por_fold: pd.DataFrame
-    modelos: list
+    oof_probability: np.ndarray
+    threshold: float
+    fold_metrics: pd.DataFrame
+    models: list
 
     @property
-    def resumen(self):
+    def summary(self):
         """Media y desvío de cada métrica entre folds, más el umbral."""
-        metricas = {}
-        for columna in self.metricas_por_fold.columns:
-            metricas[f'{columna}_media'] = float(self.metricas_por_fold[columna].mean())
-            metricas[f'{columna}_desvio'] = float(self.metricas_por_fold[columna].std())
-        metricas['umbral'] = float(self.umbral)
-        return metricas
+        metrics = {}
+        for column in self.fold_metrics.columns:
+            metrics[f'{column}_media'] = float(self.fold_metrics[column].mean())
+            metrics[f'{column}_desvio'] = float(self.fold_metrics[column].std())
+        metrics['umbral'] = float(self.threshold)
+        return metrics
 
 
-def agregar_tasas_fraude(train, validacion, columnas_tasa):
+def add_fraud_rates(train, validation, rate_columns):
     """Tasa de fraude por categoría: out-of-fold interno en train y ajustada con todo train en validación."""
     train = train.copy()
-    validacion = validacion.copy()
-    folds_internos = crear_folds(train['fraude'])
-    for columna in columnas_tasa:
-        nombre = f'{columna}_tasa_fraude'
-        train[nombre] = tasa_fraude_oof(train[columna], train['fraude'], folds_internos).to_numpy()
-        tasa_suavizada, tasa_global = ajustar_tasa_fraude(train[columna], train['fraude'])
-        validacion[nombre] = aplicar_tasa_fraude(validacion[columna], tasa_suavizada, tasa_global).to_numpy()
-    return train, validacion
+    validation = validation.copy()
+    inner_folds = make_folds(train['fraude'])
+    for column in rate_columns:
+        name = f'{column}_tasa_fraude'
+        train[name] = oof_fraud_rate(train[column], train['fraude'], inner_folds).to_numpy()
+        smoothed_rate, global_rate = fit_fraud_rate(train[column], train['fraude'])
+        validation[name] = apply_fraud_rate(validation[column], smoothed_rate, global_rate).to_numpy()
+    return train, validation
 
 
-def metricas_fold(fraude, monto, probabilidad, umbral):
+def compute_fold_metrics(fraud, amount, probability, threshold):
     """Métricas de ranking y de negocio de un fold."""
     return {
-        'auc_roc': roc_auc_score(fraude, probabilidad),
-        'auc_pr': average_precision_score(fraude, probabilidad),
-        **metricas_decision(fraude, monto, probabilidad < umbral),
+        'auc_roc': roc_auc_score(fraud, probability),
+        'auc_pr': average_precision_score(fraud, probability),
+        **decision_metrics(fraud, amount, probability < threshold),
     }
 
 
-def validacion_cruzada(datos, features, nombre_modelo, parametros=None, columnas_tasa=(), folds=None, pesos=None):
+def cross_validate(data, features, model_name, params=None, rate_columns=(), folds=None, weights=None):
     """Entrena el modelo en cada fold (con pesos por fila si se indican), junta las predicciones out-of-fold y elige el umbral que maximiza la ganancia."""
-    columnas_modelo = [*features, *(f'{columna}_tasa_fraude' for columna in columnas_tasa)]
-    datos = preparar_categoricas(datos, [*features, *columnas_tasa])
-    folds = folds or crear_folds(datos['fraude'])
+    model_columns = [*features, *(f'{column}_tasa_fraude' for column in rate_columns)]
+    data = prepare_categoricals(data, [*features, *rate_columns])
+    folds = folds or make_folds(data['fraude'])
 
-    probabilidad_oof = np.zeros(len(datos))
-    modelos = []
-    for indices_train, indices_validacion in folds:
-        train, validacion = agregar_tasas_fraude(datos.iloc[indices_train], datos.iloc[indices_validacion], columnas_tasa)
-        modelo = crear_modelo(nombre_modelo, columnas_modelo, parametros)
-        argumentos_fit = {} if pesos is None else {'sample_weight': pesos.iloc[indices_train].to_numpy()}
-        modelo.fit(train[columnas_modelo], train['fraude'], **argumentos_fit)
-        probabilidad_oof[indices_validacion] = modelo.predict_proba(validacion[columnas_modelo])[:, 1]
-        modelos.append(modelo)
+    oof_probability = np.zeros(len(data))
+    models = []
+    for train_indices, validation_indices in folds:
+        train, validation = add_fraud_rates(data.iloc[train_indices], data.iloc[validation_indices], rate_columns)
+        model = build_model(model_name, model_columns, params)
+        fit_kwargs = {} if weights is None else {'sample_weight': weights.iloc[train_indices].to_numpy()}
+        model.fit(train[model_columns], train['fraude'], **fit_kwargs)
+        oof_probability[validation_indices] = model.predict_proba(validation[model_columns])[:, 1]
+        models.append(model)
 
-    umbral = umbral_optimo(datos['fraude'], datos['monto'], probabilidad_oof)
-    metricas_por_fold = pd.DataFrame([
-        metricas_fold(
-            datos['fraude'].iloc[indices_validacion].to_numpy(),
-            datos['monto'].iloc[indices_validacion].to_numpy(),
-            probabilidad_oof[indices_validacion],
-            umbral,
+    threshold = optimal_threshold(data['fraude'], data['monto'], oof_probability)
+    fold_metrics = pd.DataFrame([
+        compute_fold_metrics(
+            data['fraude'].iloc[validation_indices].to_numpy(),
+            data['monto'].iloc[validation_indices].to_numpy(),
+            oof_probability[validation_indices],
+            threshold,
         )
-        for _, indices_validacion in folds
+        for _, validation_indices in folds
     ])
-    return ResultadoValidacion(probabilidad_oof, umbral, metricas_por_fold, modelos)
+    return ValidationResult(oof_probability, threshold, fold_metrics, models)

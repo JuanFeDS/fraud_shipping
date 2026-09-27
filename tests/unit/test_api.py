@@ -5,48 +5,48 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from fraude_shipping.produccion.api import app
+from fraude_shipping.production.api import app
 
 
-@pytest.fixture(name='cliente')
-def fixture_cliente(pipeline, monkeypatch):
+@pytest.fixture(name='client')
+def fixture_client(pipeline, monkeypatch):
     """Cliente de la API con el pipeline sintético inyectado y sin API key, salvo que el test la configure."""
     monkeypatch.delenv('FRAUDE_API_KEY', raising=False)
     app.state.pipeline = pipeline
-    app.state.version_modelo = None
+    app.state.model_version = None
     return TestClient(app)
 
 
-@pytest.fixture(name='transaccion')
-def fixture_transaccion(datos_nuevos):
+@pytest.fixture(name='transaction')
+def fixture_transaction(new_data):
     """Una transacción válida como la enviaría un cliente: nulos como null y fecha en ISO 8601."""
-    return json.loads(datos_nuevos.iloc[0].to_json(date_format='iso'))
+    return json.loads(new_data.iloc[0].to_json(date_format='iso'))
 
 
-def test_salud(cliente, pipeline):
+def test_health(client, pipeline):
     """El endpoint de salud confirma el modelo cargado y su umbral."""
-    respuesta = cliente.get('/salud')
-    assert respuesta.status_code == 200
-    assert respuesta.json() == {'estado': 'ok', 'version_modelo': None, 'umbral': pipeline.umbral}
+    response = client.get('/salud')
+    assert response.status_code == 200
+    assert response.json() == {'estado': 'ok', 'version_modelo': None, 'umbral': pipeline.threshold}
 
 
-def test_predecir_devuelve_lo_mismo_que_el_pipeline(cliente, pipeline, datos_nuevos, transaccion):
+def test_predict_matches_pipeline(client, pipeline, new_data, transaction):
     """La respuesta coincide con la predicción del pipeline para la misma transacción."""
-    esperado = pipeline.predecir(datos_nuevos.head(1)).iloc[0]
-    respuesta = cliente.post('/predecir', json=transaccion)
-    assert respuesta.status_code == 200
-    assert respuesta.json()['probabilidad_fraude'] == pytest.approx(esperado['probabilidad_fraude'])
-    assert respuesta.json()['decision'] == esperado['decision']
-    assert respuesta.json()['umbral'] == pipeline.umbral
+    expected = pipeline.predict(new_data.head(1)).iloc[0]
+    response = client.post('/predecir', json=transaction)
+    assert response.status_code == 200
+    assert response.json()['probabilidad_fraude'] == pytest.approx(expected['probabilidad_fraude'])
+    assert response.json()['decision'] == expected['decision']
+    assert response.json()['umbral'] == pipeline.threshold
 
 
-def test_predecir_acepta_campos_opcionales_ausentes(cliente, transaccion):
+def test_predict_accepts_missing_optional_fields(client, transaction):
     """Las variables que admiten nulo pueden no enviarse."""
-    obligatoria = {campo: valor for campo, valor in transaccion.items() if campo not in ('b', 'c', 'd', 'f', 'g', 'l', 'm', 'o')}
-    assert cliente.post('/predecir', json=obligatoria).status_code == 200
+    required = {field: value for field, value in transaction.items() if field not in ('b', 'c', 'd', 'f', 'g', 'l', 'm', 'o')}
+    assert client.post('/predecir', json=required).status_code == 200
 
 
-@pytest.mark.parametrize('cambio', [
+@pytest.mark.parametrize('change', [
     {'score': 150},
     {'score': -1},
     {'n': 2},
@@ -55,47 +55,47 @@ def test_predecir_acepta_campos_opcionales_ausentes(cliente, transaccion):
     {'monto': 0},
     {'fecha': 'no es una fecha'},
 ])
-def test_input_invalido_se_rechaza(cliente, transaccion, cambio):
+def test_invalid_input_is_rejected(client, transaction, change):
     """Un valor fuera de dominio se rechaza con 422 antes de llegar al modelo."""
-    assert cliente.post('/predecir', json={**transaccion, **cambio}).status_code == 422
+    assert client.post('/predecir', json={**transaction, **change}).status_code == 422
 
 
-@pytest.mark.parametrize('campo', ['j', 'score', 'monto', 'fecha'])
-def test_campo_obligatorio_faltante_se_rechaza(cliente, transaccion, campo):
+@pytest.mark.parametrize('field', ['j', 'score', 'monto', 'fecha'])
+def test_missing_required_field_is_rejected(client, transaction, field):
     """Sin una variable obligatoria no se puede decidir."""
-    incompleta = {clave: valor for clave, valor in transaccion.items() if clave != campo}
-    assert cliente.post('/predecir', json=incompleta).status_code == 422
+    incomplete = {key: value for key, value in transaction.items() if key != field}
+    assert client.post('/predecir', json=incomplete).status_code == 422
 
 
-@pytest.mark.parametrize(('metadata', 'version_esperada'), [(None, None), ({'version': '3'}, '3')])
-def test_al_iniciar_carga_el_artefacto_indicado(tmp_path, monkeypatch, pipeline, metadata, version_esperada):
-    """La API lee el pipeline de RUTA_MODELO y, si hay metadata del registry al lado, informa su versión."""
-    ruta = tmp_path / 'pipeline.joblib'
-    pipeline.guardar(ruta)
+@pytest.mark.parametrize(('metadata', 'expected_version'), [(None, None), ({'version': '3'}, '3')])
+def test_startup_loads_configured_artifact(tmp_path, monkeypatch, pipeline, metadata, expected_version):
+    """La API lee el pipeline de MODEL_PATH y, si hay metadata del registry al lado, informa su versión."""
+    path = tmp_path / 'pipeline.joblib'
+    pipeline.save(path)
     if metadata is not None:
-        ruta.with_suffix('.json').write_text(json.dumps(metadata), encoding='utf-8')
-    monkeypatch.setenv('RUTA_MODELO', str(ruta))
+        path.with_suffix('.json').write_text(json.dumps(metadata), encoding='utf-8')
+    monkeypatch.setenv('MODEL_PATH', str(path))
     app.state.pipeline = None
-    with TestClient(app) as cliente:
-        salud = cliente.get('/salud').json()
-    assert salud['umbral'] == pipeline.umbral
-    assert salud['version_modelo'] == version_esperada
+    with TestClient(app) as client:
+        health = client.get('/salud').json()
+    assert health['umbral'] == pipeline.threshold
+    assert health['version_modelo'] == expected_version
 
 
-@pytest.mark.parametrize(('encabezados', 'codigo_esperado'), [
+@pytest.mark.parametrize(('headers', 'expected_status'), [
     ({}, 401),
     ({'X-API-Key': 'otra-clave'}, 401),
     ({'X-API-Key': 'clave-correcta'}, 200),
 ])
-def test_api_key_requerida_si_esta_configurada(cliente, transaccion, monkeypatch, encabezados, codigo_esperado):
+def test_api_key_required_when_configured(client, transaction, monkeypatch, headers, expected_status):
     """Con FRAUDE_API_KEY definida, /predecir solo responde a quien envía esa key en el header X-API-Key."""
     monkeypatch.setenv('FRAUDE_API_KEY', 'clave-correcta')
-    assert cliente.post('/predecir', json=transaccion, headers=encabezados).status_code == codigo_esperado
+    assert client.post('/predecir', json=transaction, headers=headers).status_code == expected_status
 
 
-def test_salud_y_documentacion_no_requieren_api_key(cliente, monkeypatch):
+def test_health_and_docs_do_not_require_api_key(client, monkeypatch):
     """/salud y /docs quedan abiertos para poder verificar el servicio y probarlo desde el navegador."""
     monkeypatch.setenv('FRAUDE_API_KEY', 'clave-correcta')
-    assert cliente.get('/salud').status_code == 200
-    assert cliente.get('/docs').status_code == 200
-    assert 'X-API-Key' in cliente.get('/openapi.json').text
+    assert client.get('/salud').status_code == 200
+    assert client.get('/docs').status_code == 200
+    assert 'X-API-Key' in client.get('/openapi.json').text

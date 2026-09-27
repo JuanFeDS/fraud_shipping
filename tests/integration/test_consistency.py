@@ -7,46 +7,46 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from fraude_shipping.features import cargar_datos
-from fraude_shipping.produccion.api import app
-from fraude_shipping.produccion.pipeline import PARAMETROS_LIGHTGBM, PipelineFraude
+from fraude_shipping.features import load_data
+from fraude_shipping.production.api import app
+from fraude_shipping.production.pipeline import LIGHTGBM_PARAMS, FraudPipeline
 
-RUTA_DATOS = Path(__file__).resolve().parents[2] / 'data' / 'raw' / 'dataset.csv'
-TAMANO_TRAIN = 20_000
-TAMANO_PRUEBA = 200
+DATA_PATH = Path(__file__).resolve().parents[2] / 'data' / 'raw' / 'dataset.csv'
+TRAIN_SIZE = 20_000
+TEST_SIZE = 200
 
 
-@pytest.fixture(scope='module', name='datos_reales')
-def fixture_datos_reales():
+@pytest.fixture(scope='module', name='real_data')
+def fixture_real_data():
     """Muestra del dataset real: train y transacciones no vistas, con los nulos y categorías reales."""
-    datos = cargar_datos(RUTA_DATOS).sample(TAMANO_TRAIN + TAMANO_PRUEBA, random_state=0)
-    return datos.iloc[:TAMANO_TRAIN], datos.iloc[TAMANO_TRAIN:].drop(columns='fraude')
+    data = load_data(DATA_PATH).sample(TRAIN_SIZE + TEST_SIZE, random_state=0)
+    return data.iloc[:TRAIN_SIZE], data.iloc[TRAIN_SIZE:].drop(columns='fraude')
 
 
-@pytest.fixture(scope='module', name='pipeline_real')
-def fixture_pipeline_real(datos_reales):
+@pytest.fixture(scope='module', name='real_pipeline')
+def fixture_real_pipeline(real_data):
     """Pipeline con los hiperparámetros de producción y menos árboles, para que el test corra en segundos."""
-    train, _ = datos_reales
-    return PipelineFraude(parametros={**PARAMETROS_LIGHTGBM, 'n_estimators': 50}).ajustar(train)
+    train, _ = real_data
+    return FraudPipeline(params={**LIGHTGBM_PARAMS, 'n_estimators': 50}).fit(train)
 
 
-def test_fila_a_fila_igual_que_batch(pipeline_real, datos_reales):
+def test_row_by_row_matches_batch(real_pipeline, real_data):
     """Predecir de a una transacción da lo mismo que predecir el lote completo."""
-    _, prueba = datos_reales
-    batch = pipeline_real.predecir_probabilidad(prueba)
-    fila_a_fila = [pipeline_real.predecir_probabilidad(prueba.iloc[[posicion]])[0] for posicion in range(len(prueba))]
-    np.testing.assert_allclose(fila_a_fila, batch)
+    _, test = real_data
+    batch = real_pipeline.predict_proba(test)
+    row_by_row = [real_pipeline.predict_proba(test.iloc[[position]])[0] for position in range(len(test))]
+    np.testing.assert_allclose(row_by_row, batch)
 
 
-def test_api_igual_que_batch(pipeline_real, datos_reales):
+def test_api_matches_batch(real_pipeline, real_data):
     """La API devuelve la misma probabilidad y decisión que el scoring batch."""
-    _, prueba = datos_reales
-    app.state.pipeline = pipeline_real
-    cliente = TestClient(app)
-    muestra = prueba.head(20)
-    esperado = pipeline_real.predecir(muestra)
-    for (_, fila), (_, prediccion) in zip(muestra.iterrows(), esperado.iterrows()):
-        respuesta = cliente.post('/predecir', json=json.loads(fila.to_json(date_format='iso')))
-        assert respuesta.status_code == 200
-        assert respuesta.json()['probabilidad_fraude'] == pytest.approx(prediccion['probabilidad_fraude'])
-        assert respuesta.json()['decision'] == prediccion['decision']
+    _, test = real_data
+    app.state.pipeline = real_pipeline
+    client = TestClient(app)
+    sample = test.head(20)
+    expected = real_pipeline.predict(sample)
+    for (_, row), (_, prediction) in zip(sample.iterrows(), expected.iterrows()):
+        response = client.post('/predecir', json=json.loads(row.to_json(date_format='iso')))
+        assert response.status_code == 200
+        assert response.json()['probabilidad_fraude'] == pytest.approx(prediction['probabilidad_fraude'])
+        assert response.json()['decision'] == prediction['decision']

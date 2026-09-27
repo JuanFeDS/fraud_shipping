@@ -4,119 +4,119 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 
-SEMILLA = 42
-NUMERO_FOLDS = 5
-COLUMNAS_CATEGORICAS_ORIGINALES = ['g', 'j', 'o', 'p']
-COLUMNAS_ORIGINALES = [
+SEED = 42
+N_FOLDS = 5
+ORIGINAL_CATEGORICAL_COLUMNS = ['g', 'j', 'o', 'p']
+ORIGINAL_COLUMNS = [
     'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'monto', 'score',
 ]
-MINIMO_TRANSACCIONES_PAIS = 100
-SUAVIZADO = 20
+MIN_COUNTRY_TRANSACTIONS = 100
+SMOOTHING = 20
 RATIOS = {
     'ratio_f_l': ('f', 'l'),
     'ratio_m_l': ('m', 'l'),
     'ratio_h_l': ('h', 'l'),
     'ratio_d_m': ('d', 'm'),
 }
-VENTANAS_ACTIVIDAD = {'j_transacciones_1h': '1h', 'j_transacciones_24h': '24h'}
+ACTIVITY_WINDOWS = {'j_transacciones_1h': '1h', 'j_transacciones_24h': '24h'}
 
 
-def cargar_datos(ruta):
+def load_data(path):
     """Lee el dataset crudo con la fecha como datetime."""
-    return pd.read_csv(ruta, parse_dates=['fecha'])
+    return pd.read_csv(path, parse_dates=['fecha'])
 
 
-def _agregar_actividad_reciente(datos):
+def _add_recent_activity(data):
     """Transacciones previas de la misma categoría de j en cada ventana; solo mira hacia atrás."""
-    ordenadas = datos[['fecha', 'j']].sort_values('fecha')
-    indice_original = ordenadas.index
-    ordenadas = ordenadas.set_index('fecha').assign(transaccion=1)
-    for nombre, ventana in VENTANAS_ACTIVIDAD.items():
-        conteo = ordenadas.groupby('j')['transaccion'].transform(
-            lambda transacciones, ventana=ventana: transacciones.rolling(ventana).sum() - 1
+    ordered = data[['fecha', 'j']].sort_values('fecha')
+    original_index = ordered.index
+    ordered = ordered.set_index('fecha').assign(transaction=1)
+    for name, window in ACTIVITY_WINDOWS.items():
+        count = ordered.groupby('j')['transaction'].transform(
+            lambda transactions, window=window: transactions.rolling(window).sum() - 1
         )
-        datos.loc[indice_original, nombre] = conteo.to_numpy()
+        data.loc[original_index, name] = count.to_numpy()
 
 
-def construir_features(datos):
+def build_features(data):
     """Agrega las features del notebook 03 que no usan la etiqueta; la tasa de fraude de j se calcula por fold."""
-    datos = datos.copy()
-    datos['hora'] = datos['fecha'].dt.hour
-    datos['dia_semana'] = datos['fecha'].dt.dayofweek
+    data = data.copy()
+    data['hora'] = data['fecha'].dt.hour
+    data['dia_semana'] = data['fecha'].dt.dayofweek
 
-    datos['j_frecuencia'] = datos['j'].map(datos['j'].value_counts())
-    datos['j_monto_relativo'] = datos['monto'] / datos.groupby('j')['monto'].transform('median')
-    _agregar_actividad_reciente(datos)
+    data['j_frecuencia'] = data['j'].map(data['j'].value_counts())
+    data['j_monto_relativo'] = data['monto'] / data.groupby('j')['monto'].transform('median')
+    _add_recent_activity(data)
 
-    datos['bc_nulo'] = datos['b'].isna().astype(int)
-    datos['f_negativo'] = (datos['f'] < 0).astype(int)
-    datos['d_tope'] = (datos['d'] == 50).astype(int)
-    datos['e_cero'] = (datos['e'] == 0).astype(int)
-    datos['monto_entero'] = (datos['monto'].mul(100).round() % 100 == 0).astype(int)
+    data['bc_nulo'] = data['b'].isna().astype(int)
+    data['f_negativo'] = (data['f'] < 0).astype(int)
+    data['d_tope'] = (data['d'] == 50).astype(int)
+    data['e_cero'] = (data['e'] == 0).astype(int)
+    data['monto_entero'] = (data['monto'].mul(100).round() % 100 == 0).astype(int)
 
-    datos['g_agrupado'] = agrupar_paises(datos['g'], obtener_paises_frecuentes(datos['g']))
+    data['g_agrupado'] = group_countries(data['g'], get_frequent_countries(data['g']))
 
-    for nombre, (numerador, denominador) in RATIOS.items():
-        datos[nombre] = datos[numerador] / datos[denominador].replace(0, np.nan)
+    for name, (numerator, denominator) in RATIOS.items():
+        data[name] = data[numerator] / data[denominator].replace(0, np.nan)
 
-    datos['perfil_onp'] = crear_perfil_onp(datos)
-    return datos
-
-
-def obtener_paises_frecuentes(paises):
-    """Países con al menos MINIMO_TRANSACCIONES_PAIS transacciones."""
-    frecuencia_pais = paises.value_counts()
-    return set(frecuencia_pais[frecuencia_pais >= MINIMO_TRANSACCIONES_PAIS].index)
+    data['perfil_onp'] = build_onp_profile(data)
+    return data
 
 
-def agrupar_paises(paises, paises_frecuentes):
+def get_frequent_countries(countries):
+    """Países con al menos MIN_COUNTRY_TRANSACTIONS transacciones."""
+    country_counts = countries.value_counts()
+    return set(country_counts[country_counts >= MIN_COUNTRY_TRANSACTIONS].index)
+
+
+def group_countries(countries, frequent_countries):
     """Reemplaza por "Otros" los países que no están entre los frecuentes; el nulo se mantiene."""
-    return paises.where(paises.isin(paises_frecuentes) | paises.isna(), 'Otros')
+    return countries.where(countries.isin(frequent_countries) | countries.isna(), 'Otros')
 
 
-def crear_perfil_onp(datos):
+def build_onp_profile(data):
     """Combinación de o, n y p, con el nulo de o como categoría propia."""
-    return datos['o'].fillna('nulo') + '_' + datos['n'].astype(int).astype(str) + '_' + datos['p']
+    return data['o'].fillna('nulo') + '_' + data['n'].astype(int).astype(str) + '_' + data['p']
 
 
-def columnas_categoricas(columnas):
+def categorical_columns(columns):
     """Columnas de texto dentro de una lista de features."""
-    return [columna for columna in columnas if columna in [*COLUMNAS_CATEGORICAS_ORIGINALES, 'g_agrupado', 'perfil_onp']]
+    return [column for column in columns if column in [*ORIGINAL_CATEGORICAL_COLUMNS, 'g_agrupado', 'perfil_onp']]
 
 
-def preparar_categoricas(datos, columnas):
+def prepare_categoricals(data, columns):
     """Convierte las categóricas a dtype category, con el nulo como categoría propia."""
-    datos = datos.copy()
-    for columna in columnas_categoricas(columnas):
-        datos[columna] = datos[columna].fillna('nulo').astype('category')
-    return datos
+    data = data.copy()
+    for column in categorical_columns(columns):
+        data[column] = data[column].fillna('nulo').astype('category')
+    return data
 
 
-def ajustar_tasa_fraude(categorias, fraude):
+def fit_fraud_rate(categories, fraud):
     """Tasa de fraude suavizada por categoría y tasa global, para aplicar a datos nuevos."""
-    tasa_global = fraude.mean()
-    estadisticas = fraude.groupby(categorias, observed=True).agg(['sum', 'count'])
-    tasa_suavizada = (estadisticas['sum'] + SUAVIZADO * tasa_global) / (estadisticas['count'] + SUAVIZADO)
-    return tasa_suavizada, tasa_global
+    global_rate = fraud.mean()
+    stats = fraud.groupby(categories, observed=True).agg(['sum', 'count'])
+    smoothed_rate = (stats['sum'] + SMOOTHING * global_rate) / (stats['count'] + SMOOTHING)
+    return smoothed_rate, global_rate
 
 
-def aplicar_tasa_fraude(categorias, tasa_suavizada, tasa_global):
+def apply_fraud_rate(categories, smoothed_rate, global_rate):
     """Asigna a cada fila la tasa de su categoría; las categorías no vistas reciben la tasa global."""
-    return categorias.map(tasa_suavizada).astype(float).fillna(tasa_global)
+    return categories.map(smoothed_rate).astype(float).fillna(global_rate)
 
 
-def tasa_fraude_oof(categorias, fraude, folds):
+def oof_fraud_rate(categories, fraud, folds):
     """Tasa de fraude por categoría donde cada fila recibe la calculada con los folds que no la contienen."""
-    resultado = pd.Series(np.nan, index=categorias.index)
-    for indices_train, indices_validacion in folds:
-        tasa_suavizada, tasa_global = ajustar_tasa_fraude(categorias.iloc[indices_train], fraude.iloc[indices_train])
-        resultado.iloc[indices_validacion] = aplicar_tasa_fraude(
-            categorias.iloc[indices_validacion], tasa_suavizada, tasa_global
+    result = pd.Series(np.nan, index=categories.index)
+    for train_indices, validation_indices in folds:
+        smoothed_rate, global_rate = fit_fraud_rate(categories.iloc[train_indices], fraud.iloc[train_indices])
+        result.iloc[validation_indices] = apply_fraud_rate(
+            categories.iloc[validation_indices], smoothed_rate, global_rate
         ).to_numpy()
-    return resultado
+    return result
 
 
-def crear_folds(fraude, numero_folds=NUMERO_FOLDS, semilla=SEMILLA):
+def make_folds(fraud, n_folds=N_FOLDS, seed=SEED):
     """Folds estratificados por la etiqueta; con la semilla por defecto son los mismos del baseline."""
-    divisor = StratifiedKFold(n_splits=numero_folds, shuffle=True, random_state=semilla)
-    return list(divisor.split(np.zeros(len(fraude)), fraude))
+    splitter = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=seed)
+    return list(splitter.split(np.zeros(len(fraud)), fraud))

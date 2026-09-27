@@ -3,20 +3,20 @@
 import argparse
 from pathlib import Path
 
-from fraude_shipping.produccion.pipeline import RUTA_MODELO
-from fraude_shipping.registro import ALIAS_PRODUCCION, conectar_mlflow, descargar_pipeline
+from fraude_shipping.production.pipeline import MODEL_PATH
+from fraude_shipping.registry import PRODUCTION_ALIAS, connect_mlflow, download_pipeline
 
 
 def main():
     """Conecta con MLflow, descarga el pipeline pedido y muestra de qué versión viene."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--version', default=ALIAS_PRODUCCION, help='Alias o número de versión a descargar')
-    parser.add_argument('--modelo', type=Path, default=RUTA_MODELO, help='Ruta donde se guarda el pipeline')
-    argumentos = parser.parse_args()
+    parser.add_argument('--version', default=PRODUCTION_ALIAS, help='Alias o número de versión a descargar')
+    parser.add_argument('--model', type=Path, default=MODEL_PATH, help='Ruta donde se guarda el pipeline')
+    args = parser.parse_args()
 
-    conectar_mlflow()
-    metadata = descargar_pipeline(argumentos.modelo, argumentos.version)
-    print(f"{metadata['modelo']} v{metadata['version']} (alias {metadata['alias']}) descargado en {argumentos.modelo}")
+    connect_mlflow()
+    metadata = download_pipeline(args.model, args.version)
+    print(f"{metadata['modelo']} v{metadata['version']} (alias {metadata['alias']}) descargado en {args.model}")
 
 
 if __name__ == '__main__':

@@ -3,34 +3,34 @@
 import mlflow
 import plotly.express as px
 
-from fraude_shipping.experimentacion.validacion import validacion_cruzada
-from fraude_shipping.ganancia import curva_ganancia
-from fraude_shipping.registro import ETIQUETA_DESCRIPCION, registrar_dataset
+from fraude_shipping.experimentation.validation import cross_validate
+from fraude_shipping.profit import profit_curve
+from fraude_shipping.registry import DESCRIPTION_TAG, log_dataset
 
 
-def _graficar_curva_ganancia(datos, resultado, nombre_run):
+def _plot_profit_curve(data, result, run_name):
     """Curva de ganancia out-of-fold según el umbral, con el umbral elegido marcado."""
-    curva = curva_ganancia(datos['fraude'], datos['monto'], resultado.probabilidad_oof)
-    fig = px.line(curva, x='umbral', y='ganancia', title=f'Curva de ganancia — {nombre_run}')
-    fig.add_vline(x=resultado.umbral, line_dash='dash', annotation_text=f'umbral {resultado.umbral:.2f}')
+    curve = profit_curve(data['fraude'], data['monto'], result.oof_probability)
+    fig = px.line(curve, x='umbral', y='ganancia', title=f'Curva de ganancia — {run_name}')
+    fig.add_vline(x=result.threshold, line_dash='dash', annotation_text=f'umbral {result.threshold:.2f}')
     return fig
 
 
-def ejecutar_experimento(
-    datos, nombre_run, features, nombre_modelo, parametros=None, columnas_tasa=(), etiquetas=None, folds=None,
-    anidado=False, pesos=None, descripcion=None,
+def run_experiment(
+    data, run_name, features, model_name, params=None, rate_columns=(), tags=None, folds=None,
+    nested=False, weights=None, description=None,
 ):
     """Corre la validación cruzada de una configuración y registra parámetros, métricas y artefactos en MLflow."""
-    parametros = parametros or {}
-    resultado = validacion_cruzada(datos, features, nombre_modelo, parametros, columnas_tasa, folds, pesos)
-    with mlflow.start_run(run_name=nombre_run, nested=anidado):
-        mlflow.set_tags({'modelo': nombre_modelo, **(etiquetas or {})})
-        if descripcion:
-            mlflow.set_tag(ETIQUETA_DESCRIPCION, descripcion)
-        mlflow.log_params({'modelo': nombre_modelo, 'numero_features': len(features), **parametros})
-        mlflow.log_dict({'features': list(features), 'columnas_tasa': list(columnas_tasa)}, 'features.json')
+    params = params or {}
+    result = cross_validate(data, features, model_name, params, rate_columns, folds, weights)
+    with mlflow.start_run(run_name=run_name, nested=nested):
+        mlflow.set_tags({'modelo': model_name, **(tags or {})})
+        if description:
+            mlflow.set_tag(DESCRIPTION_TAG, description)
+        mlflow.log_params({'modelo': model_name, 'numero_features': len(features), **params})
+        mlflow.log_dict({'features': list(features), 'columnas_tasa': list(rate_columns)}, 'features.json')
         # dict.fromkeys evita columnas repetidas cuando j es feature y además se le calcula la tasa
-        registrar_dataset(datos[list(dict.fromkeys([*features, *columnas_tasa, 'fraude']))], 'features', 'training')
-        mlflow.log_metrics(resultado.resumen)
-        mlflow.log_figure(_graficar_curva_ganancia(datos, resultado, nombre_run), 'curva_ganancia.html')
-    return resultado
+        log_dataset(data[list(dict.fromkeys([*features, *rate_columns, 'fraude']))], 'features', 'training')
+        mlflow.log_metrics(result.summary)
+        mlflow.log_figure(_plot_profit_curve(data, result, run_name), 'curva_ganancia.html')
+    return result

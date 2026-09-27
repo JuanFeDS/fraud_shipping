@@ -9,9 +9,9 @@ COPY deploy/api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/ src/
-COPY models/pipeline_fraude.joblib models/pipeline_fraude.json models/
+COPY models/fraud_pipeline.joblib models/fraud_pipeline.json models/
 
 ENV PYTHONPATH=/app/src \
-    RUTA_MODELO=/app/models/pipeline_fraude.joblib \
+    MODEL_PATH=/app/models/fraud_pipeline.joblib \
     PORT=8080
-CMD ["sh", "-c", "uvicorn fraude_shipping.produccion.api:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["sh", "-c", "uvicorn fraude_shipping.production.api:app --host 0.0.0.0 --port ${PORT}"]

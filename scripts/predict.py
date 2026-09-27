@@ -3,26 +3,26 @@
 import argparse
 from pathlib import Path
 
-from fraude_shipping.features import cargar_datos
-from fraude_shipping.produccion.pipeline import RUTA_MODELO, PipelineFraude
+from fraude_shipping.features import load_data
+from fraude_shipping.production.pipeline import MODEL_PATH, FraudPipeline
 
 
 def main():
     """Carga el pipeline, predice sobre el CSV de entrada y escribe el resultado."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--entrada', type=Path, required=True, help='CSV con transacciones (misma estructura que el dataset)')
-    parser.add_argument('--salida', type=Path, required=True, help='CSV de salida con probabilidad_fraude y decision')
-    parser.add_argument('--modelo', type=Path, default=RUTA_MODELO, help='Pipeline guardado por entrenar.py')
-    argumentos = parser.parse_args()
+    parser.add_argument('--input', type=Path, required=True, help='CSV con transacciones (misma estructura que el dataset)')
+    parser.add_argument('--output', type=Path, required=True, help='CSV de salida con probabilidad_fraude y decision')
+    parser.add_argument('--model', type=Path, default=MODEL_PATH, help='Pipeline guardado por train.py')
+    args = parser.parse_args()
 
-    transacciones = cargar_datos(argumentos.entrada)
-    pipeline = PipelineFraude.cargar(argumentos.modelo)
-    resultado = transacciones.join(pipeline.predecir(transacciones))
+    transactions = load_data(args.input)
+    pipeline = FraudPipeline.load(args.model)
+    result = transactions.join(pipeline.predict(transactions))
 
-    argumentos.salida.parent.mkdir(parents=True, exist_ok=True)
-    resultado.to_csv(argumentos.salida, index=False)
-    rechazadas = (resultado['decision'] == 'rechazar').mean()
-    print(f'{len(resultado):,} transacciones evaluadas ({rechazadas:.1%} rechazadas) -> {argumentos.salida}')
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    result.to_csv(args.output, index=False)
+    rejected = (result['decision'] == 'rechazar').mean()
+    print(f'{len(result):,} transacciones evaluadas ({rejected:.1%} rechazadas) -> {args.output}')
 
 
 if __name__ == '__main__':

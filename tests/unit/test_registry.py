@@ -7,165 +7,165 @@ import numpy as np
 import pytest
 from mlflow import MlflowClient
 
-from fraude_shipping.produccion.pipeline import PipelineFraude
-from fraude_shipping.registro import (
-    ALIAS_PRODUCCION,
-    NOMBRE_MODELO_REGISTRADO,
-    NOMBRE_RUN_VALIDACION,
-    buscar_ultima_validacion,
-    configurar_mlflow,
-    descargar_pipeline,
-    formatear_numero,
-    registrar_dataset,
-    registrar_pipeline,
+from fraude_shipping.production.pipeline import FraudPipeline
+from fraude_shipping.registry import (
+    PRODUCTION_ALIAS,
+    REGISTERED_MODEL_NAME,
+    VALIDATION_RUN_NAME,
+    download_pipeline,
+    find_latest_validation,
+    format_number,
+    log_dataset,
+    register_pipeline,
+    setup_mlflow,
 )
 
-URI_PRODUCCION = f'models:/{NOMBRE_MODELO_REGISTRADO}@{ALIAS_PRODUCCION}'
+PRODUCTION_URI = f'models:/{REGISTERED_MODEL_NAME}@{PRODUCTION_ALIAS}'
 
 
-def test_configurar_mlflow_crea_y_reutiliza_el_experimento(mlflow_temporal):
+def test_setup_mlflow_creates_and_reuses_experiment(temp_mlflow):
     """La primera vez crea la base y el experimento; la segunda reutiliza el existente."""
-    configurar_mlflow('prueba')
-    experimento = mlflow.get_experiment_by_name('prueba')
-    configurar_mlflow('prueba')
-    assert (mlflow_temporal / 'mlflow.db').exists()
-    assert mlflow.get_experiment_by_name('prueba').experiment_id == experimento.experiment_id
+    setup_mlflow('prueba')
+    experiment = mlflow.get_experiment_by_name('prueba')
+    setup_mlflow('prueba')
+    assert (temp_mlflow / 'mlflow.db').exists()
+    assert mlflow.get_experiment_by_name('prueba').experiment_id == experiment.experiment_id
 
 
-def test_configurar_mlflow_usa_el_servidor_de_la_variable_de_entorno(mlflow_temporal, monkeypatch):
+def test_setup_mlflow_uses_server_from_environment(temp_mlflow, monkeypatch):
     """Con MLFLOW_TRACKING_URI definida se usa ese servidor y el experimento no fija una carpeta local de artefactos."""
-    uri_servidor = f'sqlite:///{(mlflow_temporal / "servidor.db").as_posix()}'
-    monkeypatch.setenv('MLFLOW_TRACKING_URI', uri_servidor)
-    monkeypatch.chdir(mlflow_temporal)
-    configurar_mlflow('prueba')
-    assert mlflow.get_tracking_uri() == uri_servidor
-    assert not (mlflow_temporal / 'mlflow.db').exists()
-    experimento = mlflow.get_experiment_by_name('prueba')
+    server_uri = f'sqlite:///{(temp_mlflow / "server.db").as_posix()}'
+    monkeypatch.setenv('MLFLOW_TRACKING_URI', server_uri)
+    monkeypatch.chdir(temp_mlflow)
+    setup_mlflow('prueba')
+    assert mlflow.get_tracking_uri() == server_uri
+    assert not (temp_mlflow / 'mlflow.db').exists()
+    experiment = mlflow.get_experiment_by_name('prueba')
     # Sin ubicación explícita, el servidor usa su raíz de artefactos más el id del experimento
-    assert experimento.artifact_location.endswith(f'/{experimento.experiment_id}')
+    assert experiment.artifact_location.endswith(f'/{experiment.experiment_id}')
 
 
-@pytest.mark.usefixtures('mlflow_temporal')
-def test_registrar_dataset_con_fuente_y_etiqueta(datos):
+@pytest.mark.usefixtures('temp_mlflow')
+def test_log_dataset_with_source_and_target(data):
     """El run queda asociado al dataset, con su fuente, su contexto y la columna objetivo."""
-    configurar_mlflow('prueba')
+    setup_mlflow('prueba')
     with mlflow.start_run() as run:
-        registrar_dataset(datos, 'dataset', 'training', fuente='data/raw/dataset.csv')
-    entrada = mlflow.get_run(run.info.run_id).inputs.dataset_inputs[0]
-    assert entrada.dataset.name == 'dataset'
-    assert 'data/raw/dataset.csv' in entrada.dataset.source
-    assert entrada.tags[0].value == 'training'
+        log_dataset(data, 'dataset', 'training', source='data/raw/dataset.csv')
+    dataset_input = mlflow.get_run(run.info.run_id).inputs.dataset_inputs[0]
+    assert dataset_input.dataset.name == 'dataset'
+    assert 'data/raw/dataset.csv' in dataset_input.dataset.source
+    assert dataset_input.tags[0].value == 'training'
 
 
-@pytest.mark.usefixtures('mlflow_temporal')
-def test_registrar_pipeline_versiona_y_mueve_el_alias(tmp_path, pipeline, datos_train, datos_nuevos):
+@pytest.mark.usefixtures('temp_mlflow')
+def test_register_pipeline_versions_and_moves_alias(tmp_path, pipeline, train_data, new_data):
     """Cada registro crea una versión nueva, el alias apunta a la última y el modelo predice igual que el pipeline."""
-    ruta = tmp_path / 'pipeline.joblib'
-    pipeline.guardar(ruta)
-    configurar_mlflow('prueba')
+    path = tmp_path / 'pipeline.joblib'
+    pipeline.save(path)
+    setup_mlflow('prueba')
     with mlflow.start_run():
-        primera = registrar_pipeline(ruta, datos_train)
+        first = register_pipeline(path, train_data)
     with mlflow.start_run():
-        segunda = registrar_pipeline(ruta, datos_train)
+        second = register_pipeline(path, train_data)
 
-    assert (int(primera), int(segunda)) == (1, 2)
-    version_champion = MlflowClient().get_model_version_by_alias(NOMBRE_MODELO_REGISTRADO, ALIAS_PRODUCCION)
-    assert int(version_champion.version) == int(segunda)
+    assert (int(first), int(second)) == (1, 2)
+    champion_version = MlflowClient().get_model_version_by_alias(REGISTERED_MODEL_NAME, PRODUCTION_ALIAS)
+    assert int(champion_version.version) == int(second)
 
-    prediccion = mlflow.pyfunc.load_model(URI_PRODUCCION).predict(datos_nuevos)
-    esperado = pipeline.predecir(datos_nuevos)
-    np.testing.assert_allclose(prediccion['probabilidad_fraude'], esperado['probabilidad_fraude'])
-    assert (prediccion['decision'] == esperado['decision']).all()
+    prediction = mlflow.pyfunc.load_model(PRODUCTION_URI).predict(new_data)
+    expected = pipeline.predict(new_data)
+    np.testing.assert_allclose(prediction['probabilidad_fraude'], expected['probabilidad_fraude'])
+    assert (prediction['decision'] == expected['decision']).all()
 
 
-@pytest.mark.usefixtures('mlflow_temporal')
-def test_modelo_registrado_acepta_nulos_en_columnas_opcionales(tmp_path, pipeline, datos_train, datos_nuevos):
+@pytest.mark.usefixtures('temp_mlflow')
+def test_registered_model_accepts_nulls_in_optional_columns(tmp_path, pipeline, train_data, new_data):
     """La firma se infiere con todo train, así que las columnas que admiten nulos no se exigen al servir."""
-    ruta = tmp_path / 'pipeline.joblib'
-    pipeline.guardar(ruta)
-    configurar_mlflow('prueba')
+    path = tmp_path / 'pipeline.joblib'
+    pipeline.save(path)
+    setup_mlflow('prueba')
     with mlflow.start_run():
-        registrar_pipeline(ruta, datos_train)
-    con_nulos = datos_nuevos.head(3).copy()
-    con_nulos.loc[:, ['b', 'c']] = np.nan
-    con_nulos.loc[:, ['g', 'o']] = None
-    prediccion = mlflow.pyfunc.load_model(URI_PRODUCCION).predict(con_nulos)
-    assert prediccion['probabilidad_fraude'].between(0, 1).all()
+        register_pipeline(path, train_data)
+    with_nulls = new_data.head(3).copy()
+    with_nulls.loc[:, ['b', 'c']] = np.nan
+    with_nulls.loc[:, ['g', 'o']] = None
+    prediction = mlflow.pyfunc.load_model(PRODUCTION_URI).predict(with_nulls)
+    assert prediction['probabilidad_fraude'].between(0, 1).all()
 
 
-@pytest.mark.usefixtures('mlflow_temporal')
-def test_metodo_predict_proba_devuelve_solo_la_probabilidad(tmp_path, pipeline, datos_train, datos_nuevos):
+@pytest.mark.usefixtures('temp_mlflow')
+def test_predict_proba_method_returns_only_probability(tmp_path, pipeline, train_data, new_data):
     """Con params={'metodo': 'predict_proba'} sale solo la probabilidad; un método desconocido es un error."""
-    ruta = tmp_path / 'pipeline.joblib'
-    pipeline.guardar(ruta)
-    configurar_mlflow('prueba')
+    path = tmp_path / 'pipeline.joblib'
+    pipeline.save(path)
+    setup_mlflow('prueba')
     with mlflow.start_run():
-        registrar_pipeline(ruta, datos_train)
-    modelo = mlflow.pyfunc.load_model(URI_PRODUCCION)
+        register_pipeline(path, train_data)
+    model = mlflow.pyfunc.load_model(PRODUCTION_URI)
 
-    probabilidad = modelo.predict(datos_nuevos, params={'metodo': 'predict_proba'})
-    assert list(probabilidad.columns) == ['probabilidad_fraude']
-    np.testing.assert_allclose(probabilidad['probabilidad_fraude'], pipeline.predecir_probabilidad(datos_nuevos))
+    probability = model.predict(new_data, params={'metodo': 'predict_proba'})
+    assert list(probability.columns) == ['probabilidad_fraude']
+    np.testing.assert_allclose(probability['probabilidad_fraude'], pipeline.predict_proba(new_data))
 
     with pytest.raises(Exception, match='metodo debe ser uno de'):
-        modelo.predict(datos_nuevos, params={'metodo': 'decision_function'})
+        model.predict(new_data, params={'metodo': 'decision_function'})
 
 
-@pytest.mark.usefixtures('mlflow_temporal')
-def test_descargar_pipeline_por_alias_o_numero(tmp_path, pipeline, datos_train, datos_nuevos):
+@pytest.mark.usefixtures('temp_mlflow')
+def test_download_pipeline_by_alias_or_number(tmp_path, pipeline, train_data, new_data):
     """Descarga la versión pedida con su metadata, y el pipeline descargado predice igual que el original."""
-    ruta = tmp_path / 'pipeline.joblib'
-    pipeline.guardar(ruta)
-    configurar_mlflow('prueba')
+    path = tmp_path / 'pipeline.joblib'
+    pipeline.save(path)
+    setup_mlflow('prueba')
     with mlflow.start_run():
-        registrar_pipeline(ruta, datos_train)
+        register_pipeline(path, train_data)
     with mlflow.start_run():
-        registrar_pipeline(ruta, datos_train)
+        register_pipeline(path, train_data)
 
-    destino = tmp_path / 'descargado' / 'pipeline_fraude.joblib'
-    metadata = descargar_pipeline(destino)
+    destination = tmp_path / 'downloaded' / 'fraud_pipeline.joblib'
+    metadata = download_pipeline(destination)
     assert metadata['version'] == '2'
-    assert metadata['alias'] == [ALIAS_PRODUCCION]
-    assert json.loads(destino.with_suffix('.json').read_text(encoding='utf-8')) == metadata
+    assert metadata['alias'] == [PRODUCTION_ALIAS]
+    assert json.loads(destination.with_suffix('.json').read_text(encoding='utf-8')) == metadata
     np.testing.assert_array_equal(
-        PipelineFraude.cargar(destino).predecir_probabilidad(datos_nuevos), pipeline.predecir_probabilidad(datos_nuevos)
+        FraudPipeline.load(destination).predict_proba(new_data), pipeline.predict_proba(new_data)
     )
-    assert descargar_pipeline(destino, '1')['version'] == '1'
+    assert download_pipeline(destination, '1')['version'] == '1'
 
 
-@pytest.mark.usefixtures('mlflow_temporal')
-def test_version_registrada_queda_documentada(tmp_path, pipeline, datos_train):
+@pytest.mark.usefixtures('temp_mlflow')
+def test_registered_version_is_documented(tmp_path, pipeline, train_data):
     """Sin validación, la versión describe el entrenamiento; con validación, suma sus métricas y el enlace al run."""
-    ruta = tmp_path / 'pipeline.joblib'
-    pipeline.guardar(ruta)
-    configurar_mlflow('prueba')
-    assert buscar_ultima_validacion() is None
+    path = tmp_path / 'pipeline.joblib'
+    pipeline.save(path)
+    setup_mlflow('prueba')
+    assert find_latest_validation() is None
 
     with mlflow.start_run():
-        sin_validacion = registrar_pipeline(ruta, datos_train)
-    with mlflow.start_run(run_name=NOMBRE_RUN_VALIDACION):
+        without_validation = register_pipeline(path, train_data)
+    with mlflow.start_run(run_name=VALIDATION_RUN_NAME):
         mlflow.log_metrics({
             'ganancia_pct_maxima_media': 78.88, 'ganancia_pct_maxima_desvio': 1.5, 'auc_roc_media': 0.89, 'auc_pr_media': 0.474,
         })
-    validacion = buscar_ultima_validacion()
+    validation = find_latest_validation()
     with mlflow.start_run():
-        con_validacion = registrar_pipeline(ruta, datos_train, validacion)
+        with_validation = register_pipeline(path, train_data, validation)
 
-    cliente = MlflowClient()
-    assert 'LightGBM' in cliente.get_registered_model(NOMBRE_MODELO_REGISTRADO).description
-    primera = cliente.get_model_version(NOMBRE_MODELO_REGISTRADO, sin_validacion)
-    assert f'{formatear_numero(len(datos_train))} transacciones' in primera.description
-    assert primera.tags['umbral'] == str(pipeline.umbral)
-    assert 'run_validacion' not in primera.tags
-    segunda = cliente.get_model_version(NOMBRE_MODELO_REGISTRADO, con_validacion)
-    assert '78,9%' in segunda.description
-    assert segunda.tags['run_validacion'] == validacion.info.run_id
-    assert segunda.tags['ganancia_pct_maxima'] == '78.88'
+    client = MlflowClient()
+    assert 'LightGBM' in client.get_registered_model(REGISTERED_MODEL_NAME).description
+    first = client.get_model_version(REGISTERED_MODEL_NAME, without_validation)
+    assert f'{format_number(len(train_data))} transacciones' in first.description
+    assert first.tags['umbral'] == str(pipeline.threshold)
+    assert 'run_validacion' not in first.tags
+    second = client.get_model_version(REGISTERED_MODEL_NAME, with_validation)
+    assert '78,9%' in second.description
+    assert second.tags['run_validacion'] == validation.info.run_id
+    assert second.tags['ganancia_pct_maxima'] == '78.88'
 
 
-@pytest.mark.parametrize(('valor', 'decimales', 'esperado'), [
+@pytest.mark.parametrize(('value', 'decimals', 'expected'), [
     (150000, 0, '150.000'), (78.88, 1, '78,9'), (0.15, 2, '0,15'), (1234567.891, 2, '1.234.567,89'), (0.890, 3, '0,890'),
 ])
-def test_formatear_numero_en_espanol(valor, decimales, esperado):
+def test_format_number_in_spanish(value, decimals, expected):
     """Punto de miles y coma decimal, como se escriben los números en español."""
-    assert formatear_numero(valor, decimales) == esperado
+    assert format_number(value, decimals) == expected

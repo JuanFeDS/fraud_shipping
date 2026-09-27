@@ -5,7 +5,7 @@ FROM python:3.12-slim
 RUN pip install --no-cache-dir "mlflow[auth]==3.16.1" psycopg2-binary==2.9.13 google-cloud-storage
 
 WORKDIR /app
-COPY iniciar.py .
+COPY entrypoint.py .
 
 ENV MLFLOW_DISABLE_AGENT_HINT=1
-CMD ["python", "iniciar.py"]
+CMD ["python", "entrypoint.py"]

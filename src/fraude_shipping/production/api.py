@@ -13,12 +13,12 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Security
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 
-from fraude_shipping.produccion.pipeline import RUTA_MODELO, PipelineFraude
+from fraude_shipping.production.pipeline import MODEL_PATH, FraudPipeline
 
-ENCABEZADO_API_KEY = APIKeyHeader(name='X-API-Key', auto_error=False)
+API_KEY_HEADER = APIKeyHeader(name='X-API-Key', auto_error=False)
 
 
-class Transaccion(BaseModel):
+class Transaction(BaseModel):
     """Variables de una transacción tal como llegan al momento de decidir; las opcionales admiten nulo."""
 
     a: int
@@ -41,7 +41,7 @@ class Transaccion(BaseModel):
     score: int = Field(ge=0, le=100)
 
 
-class Prediccion(BaseModel):
+class Prediction(BaseModel):
     """Resultado del scoring de una transacción."""
 
     probabilidad_fraude: float
@@ -50,43 +50,43 @@ class Prediccion(BaseModel):
 
 
 @asynccontextmanager
-async def ciclo_de_vida(aplicacion):
+async def lifespan(application):
     """Carga el pipeline una sola vez al iniciar la API, junto con la versión registrada si viene de MLflow."""
-    ruta = Path(os.environ.get('RUTA_MODELO', RUTA_MODELO))
-    aplicacion.state.pipeline = PipelineFraude.cargar(ruta)
-    ruta_metadata = ruta.with_suffix('.json')
+    path = Path(os.environ.get('MODEL_PATH', MODEL_PATH))
+    application.state.pipeline = FraudPipeline.load(path)
+    metadata_path = path.with_suffix('.json')
     # Un pipeline entrenado localmente, sin pasar por el registry, no tiene metadata ni versión
-    metadata = json.loads(ruta_metadata.read_text(encoding='utf-8')) if ruta_metadata.exists() else {}
-    aplicacion.state.version_modelo = metadata.get('version')
+    metadata = json.loads(metadata_path.read_text(encoding='utf-8')) if metadata_path.exists() else {}
+    application.state.model_version = metadata.get('version')
     yield
 
 
-app = FastAPI(title='Prevención de fraude', lifespan=ciclo_de_vida)
+app = FastAPI(title='Prevención de fraude', lifespan=lifespan)
 
 
-def verificar_api_key(api_key: str | None = Security(ENCABEZADO_API_KEY)):
+def verify_api_key(api_key: str | None = Security(API_KEY_HEADER)):
     """Exige la API key si la variable FRAUDE_API_KEY está definida; sin ella (desarrollo local) la API queda abierta."""
-    esperada = os.environ.get('FRAUDE_API_KEY')
+    expected = os.environ.get('FRAUDE_API_KEY')
     # compare_digest evita que el tiempo de respuesta revele cuántos caracteres de la key coinciden
-    if esperada and not (api_key and compare_digest(api_key.encode(), esperada.encode())):
+    if expected and not (api_key and compare_digest(api_key.encode(), expected.encode())):
         raise HTTPException(status_code=401, detail='API key inválida o ausente')
 
 
 @app.get('/salud')
-def salud(request: Request):
+def health(request: Request):
     """Confirma que la API está arriba y con qué modelo: versión del registry (si se conoce) y umbral."""
     return {
         'estado': 'ok',
-        'version_modelo': getattr(request.app.state, 'version_modelo', None),
-        'umbral': request.app.state.pipeline.umbral,
+        'version_modelo': getattr(request.app.state, 'model_version', None),
+        'umbral': request.app.state.pipeline.threshold,
     }
 
 
-@app.post('/predecir', response_model=Prediccion, dependencies=[Depends(verificar_api_key)])
-def predecir(transaccion: Transaccion, request: Request):
+@app.post('/predecir', response_model=Prediction, dependencies=[Depends(verify_api_key)])
+def predict(transaction: Transaction, request: Request):
     """Probabilidad de fraude y decisión para una transacción."""
     pipeline = request.app.state.pipeline
-    resultado = pipeline.predecir(pd.DataFrame([transaccion.model_dump()])).iloc[0]
-    return Prediccion(
-        probabilidad_fraude=resultado['probabilidad_fraude'], decision=resultado['decision'], umbral=pipeline.umbral
+    result = pipeline.predict(pd.DataFrame([transaction.model_dump()])).iloc[0]
+    return Prediction(
+        probabilidad_fraude=result['probabilidad_fraude'], decision=result['decision'], umbral=pipeline.threshold
     )

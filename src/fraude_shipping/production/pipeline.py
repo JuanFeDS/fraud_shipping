@@ -7,29 +7,29 @@ import lightgbm as lgb
 import pandas as pd
 
 from fraude_shipping.features import (
-    COLUMNAS_ORIGINALES,
-    SEMILLA,
-    agrupar_paises,
-    ajustar_tasa_fraude,
-    aplicar_tasa_fraude,
-    columnas_categoricas,
-    crear_folds,
-    crear_perfil_onp,
-    obtener_paises_frecuentes,
-    tasa_fraude_oof,
+    ORIGINAL_COLUMNS,
+    SEED,
+    apply_fraud_rate,
+    build_onp_profile,
+    categorical_columns,
+    fit_fraud_rate,
+    get_frequent_countries,
+    group_countries,
+    make_folds,
+    oof_fraud_rate,
 )
 
-RUTA_MODELO = Path(__file__).resolve().parents[3] / 'models' / 'pipeline_fraude.joblib'
+MODEL_PATH = Path(__file__).resolve().parents[3] / 'models' / 'fraud_pipeline.joblib'
 
-COLUMNAS_NUMERICAS = [columna for columna in COLUMNAS_ORIGINALES if columna not in ('g', 'j', 'o', 'p')]
-FEATURES_MODELO = [
-    *(columna for columna in COLUMNAS_ORIGINALES if columna not in ('g', 'j')),
+NUMERIC_COLUMNS = [column for column in ORIGINAL_COLUMNS if column not in ('g', 'j', 'o', 'p')]
+MODEL_FEATURES = [
+    *(column for column in ORIGINAL_COLUMNS if column not in ('g', 'j')),
     'g_agrupado', 'j_frecuencia', 'perfil_onp', 'hora', 'j_tasa_fraude',
 ]
-CATEGORICAS_MODELO = columnas_categoricas(FEATURES_MODELO)
+MODEL_CATEGORICALS = categorical_columns(MODEL_FEATURES)
 
 # Hiperparámetros elegidos por Optuna y validados con folds nuevos en el notebook 04 (run validacion_lightgbm_tuneado)
-PARAMETROS_LIGHTGBM = {
+LIGHTGBM_PARAMS = {
     'n_estimators': 481,
     'learning_rate': 0.019385512410777697,
     'num_leaves': 172,
@@ -40,89 +40,89 @@ PARAMETROS_LIGHTGBM = {
     'reg_alpha': 1.608317898022548,
     'reg_lambda': 3.025159385030446,
 }
-UMBRAL = 0.15
+THRESHOLD = 0.15
 
 
-class PipelineFraude:
+class FraudPipeline:
     """Transforma transacciones crudas en features, estima la probabilidad de fraude y decide aprobar o rechazar."""
 
     # Todo lo que depende de otras transacciones (tasa y frecuencia de j, países frecuentes, categorías) se aprende
-    # en `ajustar`, así que `transformar` nunca usa información de los datos a predecir (point-in-time)
+    # en `fit`, así que `transform` nunca usa información de los datos a predecir (point-in-time)
 
-    def __init__(self, parametros=None, umbral=UMBRAL):
-        self.parametros = PARAMETROS_LIGHTGBM if parametros is None else parametros
-        self.umbral = umbral
-        self.paises_frecuentes = set()
-        self.frecuencia_j = pd.Series(dtype=float)
-        self.tasa_fraude_j = pd.Series(dtype=float)
-        self.tasa_fraude_global = None
-        self.categorias = {}
-        self.modelo = None
+    def __init__(self, params=None, threshold=THRESHOLD):
+        self.params = LIGHTGBM_PARAMS if params is None else params
+        self.threshold = threshold
+        self.frequent_countries = set()
+        self.j_frequency = pd.Series(dtype=float)
+        self.j_fraud_rate = pd.Series(dtype=float)
+        self.global_fraud_rate = None
+        self.categories = {}
+        self.model = None
 
-    def ajustar(self, datos):
+    def fit(self, data):
         """Aprende las tablas de las features con estado y entrena el modelo con las transacciones etiquetadas."""
-        datos = datos.reset_index(drop=True)
-        self.paises_frecuentes = obtener_paises_frecuentes(datos['g'])
-        self.frecuencia_j = datos['j'].value_counts()
-        self.tasa_fraude_j, self.tasa_fraude_global = ajustar_tasa_fraude(datos['j'], datos['fraude'])
+        data = data.reset_index(drop=True)
+        self.frequent_countries = get_frequent_countries(data['g'])
+        self.j_frequency = data['j'].value_counts()
+        self.j_fraud_rate, self.global_fraud_rate = fit_fraud_rate(data['j'], data['fraude'])
 
-        features = self._construir_features(datos)
+        features = self._build_features(data)
         # En train la tasa de j se calcula out-of-fold: con la tabla completa el modelo vería la etiqueta de cada fila
-        features['j_tasa_fraude'] = tasa_fraude_oof(datos['j'], datos['fraude'], crear_folds(datos['fraude'])).to_numpy()
-        self.categorias = {columna: sorted(features[columna].fillna('nulo').unique()) for columna in CATEGORICAS_MODELO}
+        features['j_tasa_fraude'] = oof_fraud_rate(data['j'], data['fraude'], make_folds(data['fraude'])).to_numpy()
+        self.categories = {column: sorted(features[column].fillna('nulo').unique()) for column in MODEL_CATEGORICALS}
 
-        self.modelo = lgb.LGBMClassifier(random_state=SEMILLA, verbose=-1, **self.parametros)
-        self.modelo.fit(self._fijar_categorias(features)[FEATURES_MODELO], datos['fraude'])
+        self.model = lgb.LGBMClassifier(random_state=SEED, verbose=-1, **self.params)
+        self.model.fit(self._set_categories(features)[MODEL_FEATURES], data['fraude'])
         return self
 
-    def transformar(self, datos):
-        """Features del modelo para transacciones nuevas, usando solo lo aprendido en `ajustar`."""
-        features = self._construir_features(datos)
-        features['j_tasa_fraude'] = aplicar_tasa_fraude(datos['j'], self.tasa_fraude_j, self.tasa_fraude_global)
-        return self._fijar_categorias(features)[FEATURES_MODELO]
+    def transform(self, data):
+        """Features del modelo para transacciones nuevas, usando solo lo aprendido en `fit`."""
+        features = self._build_features(data)
+        features['j_tasa_fraude'] = apply_fraud_rate(data['j'], self.j_fraud_rate, self.global_fraud_rate)
+        return self._set_categories(features)[MODEL_FEATURES]
 
-    def predecir_probabilidad(self, datos):
+    def predict_proba(self, data):
         """Probabilidad de fraude de cada transacción."""
-        return self.modelo.predict_proba(self.transformar(datos))[:, 1]
+        return self.model.predict_proba(self.transform(data))[:, 1]
 
-    def predecir(self, datos):
+    def predict(self, data):
         """Probabilidad de fraude y decisión: se rechaza si la probabilidad alcanza el umbral."""
-        probabilidad = self.predecir_probabilidad(datos)
+        probability = self.predict_proba(data)
         return pd.DataFrame(
             {
-                'probabilidad_fraude': probabilidad,
-                'decision': ['rechazar' if valor >= self.umbral else 'aprobar' for valor in probabilidad],
+                'probabilidad_fraude': probability,
+                'decision': ['rechazar' if value >= self.threshold else 'aprobar' for value in probability],
             },
-            index=datos.index,
+            index=data.index,
         )
 
-    def guardar(self, ruta=RUTA_MODELO):
+    def save(self, path=MODEL_PATH):
         """Guarda el pipeline completo (tablas, modelo y umbral) en un único archivo."""
-        ruta = Path(ruta)
-        ruta.parent.mkdir(parents=True, exist_ok=True)
-        joblib.dump(self, ruta)
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        joblib.dump(self, path)
 
     @staticmethod
-    def cargar(ruta=RUTA_MODELO):
-        """Carga un pipeline guardado con `guardar`."""
-        return joblib.load(ruta)
+    def load(path=MODEL_PATH):
+        """Carga un pipeline guardado con `save`."""
+        return joblib.load(path)
 
-    def _construir_features(self, datos):
+    def _build_features(self, data):
         """Features que no usan la etiqueta, calculadas con las tablas aprendidas."""
         # Con una sola fila, una columna numérica nula llega como object; se fuerza float para LightGBM
-        features = datos[COLUMNAS_NUMERICAS].apply(pd.to_numeric).astype(float)
-        features['o'] = datos['o']
-        features['p'] = datos['p']
-        features['g_agrupado'] = agrupar_paises(datos['g'], self.paises_frecuentes)
-        features['j_frecuencia'] = datos['j'].map(self.frecuencia_j).fillna(0).astype(float)
-        features['perfil_onp'] = crear_perfil_onp(datos)
-        features['hora'] = pd.to_datetime(datos['fecha']).dt.hour
+        features = data[NUMERIC_COLUMNS].apply(pd.to_numeric).astype(float)
+        features['o'] = data['o']
+        features['p'] = data['p']
+        features['g_agrupado'] = group_countries(data['g'], self.frequent_countries)
+        features['j_frecuencia'] = data['j'].map(self.j_frequency).fillna(0).astype(float)
+        features['perfil_onp'] = build_onp_profile(data)
+        features['hora'] = pd.to_datetime(data['fecha']).dt.hour
         return features
 
-    def _fijar_categorias(self, features):
+    def _set_categories(self, features):
         """Categóricas con las categorías de train; un valor no visto queda como nulo para LightGBM."""
         features = features.copy()
-        for columna, categorias in self.categorias.items():
-            valores = features[columna].fillna('nulo')
-            features[columna] = pd.Categorical(valores.where(valores.isin(categorias)), categories=categorias)
+        for column, categories in self.categories.items():
+            values = features[column].fillna('nulo')
+            features[column] = pd.Categorical(values.where(values.isin(categories)), categories=categories)
         return features

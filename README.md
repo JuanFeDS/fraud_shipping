@@ -63,8 +63,8 @@ Los reportes ejecutivos de cada etapa están en [`docs/reports/`](docs/reports/)
 | Componente | Descripción |
 |---|---|
 | 📓 Notebooks | Exploración, baseline, feature engineering, experimentación y explicabilidad (SHAP), cada uno con sus hallazgos |
-| 🛤️ Pipeline productivo | `PipelineFraude`: ajusta las features con estado (tasa y frecuencia de `j`, países frecuentes) solo con train y predice sin mirar el lote, como ocurriría en producción |
-| 📦 Inferencia batch | `scripts/predecir.py`: agrega probabilidad y decisión a un CSV |
+| 🛤️ Pipeline productivo | `FraudPipeline`: ajusta las features con estado (tasa y frecuencia de `j`, países frecuentes) solo con train y predice sin mirar el lote, como ocurriría en producción |
+| 📦 Inferencia batch | `scripts/predict.py`: agrega probabilidad y decisión a un CSV |
 | ⚡ API online | FastAPI con validación del input, documentación en `/docs` y API key |
 | 🧪 MLflow | Tracking de los ~70 experimentos, datasets, descripciones por run y model registry con alias `champion` |
 | ☁️ Despliegue | MLflow y la API en Cloud Run; metadatos en Supabase (Postgres) y artefactos en Cloud Storage |
@@ -81,28 +81,28 @@ fraude_shipping/
 ├── docs/reports/                 # resumen ejecutivo de cada notebook
 ├── src/fraude_shipping/
 │   ├── features.py               # construcción de features (compartido)
-│   ├── ganancia.py               # función de ganancia y métricas de negocio
-│   ├── registro.py               # MLflow: conexión, datasets, model registry
-│   ├── experimentacion/          # usado por los notebooks: modelos, validación cruzada, tracking
-│   └── produccion/               # lo que se despliega: pipeline y API (sin MLflow)
+│   ├── profit.py                 # función de ganancia y métricas de negocio
+│   ├── registry.py               # MLflow: conexión, datasets, model registry
+│   ├── experimentation/          # usado por los notebooks: modelos, validación cruzada, tracking
+│   └── production/               # lo que se despliega: pipeline y API (sin MLflow)
 ├── scripts/                      # entrenar, validar, predecir en batch, descargar del registry
-├── tests/                        # unitarios e integración
+├── tests/                        # unit/ e integration/
 └── deploy/                       # imágenes de MLflow y de la API para Cloud Run
 ```
 
 **Flujo de entrenamiento a producción**
 
 ```
-dataset.csv ──► validar_pipeline.py ──► run de validación ─┐
-            └─► entrenar.py ──────────► MLflow registry ◄──┘  (versión documentada + alias champion)
-                                             │
-                          descargar_modelo.py ◄┘
+dataset.csv ──► validate_pipeline.py ──► run de validación ─┐
+            └─► train.py ──────────────► MLflow registry ◄──┘  (versión documentada + alias champion)
+                                              │
+                           download_model.py ◄┘
                                    │
                                    ▼
                        imagen de la API (Cloud Build) ──► Cloud Run
 ```
 
-`produccion/` no depende de MLflow, CatBoost ni XGBoost: la API solo carga LightGBM y el pipeline. El modelo viaja dentro de la imagen, así cada imagen es inmutable y reproducible.
+`production/` no depende de MLflow, CatBoost ni XGBoost: la API solo carga LightGBM y el pipeline. El modelo viaja dentro de la imagen, así cada imagen es inmutable y reproducible.
 
 ---
 
@@ -128,15 +128,15 @@ poetry run mlflow ui --backend-store-uri sqlite:///mlflow.db   # explorar los ex
 
 ### Entrenar, validar y predecir
 ```bash
-poetry run python scripts/validar_pipeline.py   # CV de 5 folds del pipeline completo (~2 min)
-poetry run python scripts/entrenar.py           # entrena con todo el dataset → models/pipeline_fraude.joblib (~15 s)
-poetry run python scripts/predecir.py --entrada data/raw/dataset.csv --salida data/predicciones/predicciones.csv
+poetry run python scripts/validate_pipeline.py   # CV de 5 folds del pipeline completo (~2 min)
+poetry run python scripts/train.py               # entrena con todo el dataset → models/fraud_pipeline.joblib (~15 s)
+poetry run python scripts/predict.py --input data/raw/dataset.csv --output data/predictions/predictions.csv
 ```
-Con `--mlflow`, `validar_pipeline.py` y `entrenar.py` registran el run (y el modelo, en el caso de `entrenar.py`) en MLflow.
+Con `--mlflow`, `validate_pipeline.py` y `train.py` registran el run (y el modelo, en el caso de `train.py`) en MLflow.
 
 ### API local
 ```bash
-poetry run uvicorn fraude_shipping.produccion.api:app --reload
+poetry run uvicorn fraude_shipping.production.api:app --reload
 ```
 Documentación interactiva en http://127.0.0.1:8000/docs. Sin la variable `FRAUDE_API_KEY`, la API no exige key.
 
@@ -147,7 +147,7 @@ Documentación interactiva en http://127.0.0.1:8000/docs. Sin la variable `FRAUD
 | `MLFLOW_TRACKING_URI` | Servidor de MLflow; sin ella se usa el `mlflow.db` local |
 | `MLFLOW_TRACKING_USERNAME` / `MLFLOW_TRACKING_PASSWORD` | Credenciales del servidor de MLflow con autenticación |
 | `FRAUDE_API_KEY` | Si está definida, `/predecir` exige esa key en el header `X-API-Key` |
-| `RUTA_MODELO` | Pipeline que carga la API (por defecto `models/pipeline_fraude.joblib`) |
+| `MODEL_PATH` | Pipeline que carga la API (por defecto `models/fraud_pipeline.joblib`) |
 
 ### Tests
 ```bash
@@ -156,8 +156,8 @@ poetry run pytest    # falla si la cobertura baja del 80%
 
 ### Despliegue
 ```bash
-poetry run python scripts/descargar_modelo.py   # baja fraude_shipping@champion del registry
-gcloud builds submit . --config=deploy/api/cloudbuild.yaml --substitutions=_IMAGEN=<imagen>
+poetry run python scripts/download_model.py   # baja fraude_shipping@champion del registry
+gcloud builds submit . --config=deploy/api/cloudbuild.yaml --substitutions=_IMAGE=<imagen>
 gcloud run deploy api-fraude --image=<imagen> --set-secrets=FRAUDE_API_KEY=api-key:latest ...
 ```
 

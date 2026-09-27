@@ -9,80 +9,80 @@ import pandas as pd
 import pytest
 from mlflow import MlflowClient
 
-from fraude_shipping.registro import ALIAS_PRODUCCION, NOMBRE_MODELO_REGISTRADO
+from fraude_shipping.registry import PRODUCTION_ALIAS, REGISTERED_MODEL_NAME
 
-CARPETA_SCRIPTS = Path(__file__).resolve().parents[2] / 'scripts'
+SCRIPTS_DIR = Path(__file__).resolve().parents[2] / 'scripts'
 
 
-def _ejecutar_script(monkeypatch, nombre, *argumentos):
+def _run_script(monkeypatch, name, *args):
     """Corre un script como si se llamara desde la terminal con los argumentos indicados."""
-    monkeypatch.setattr(sys, 'argv', [nombre, *map(str, argumentos)])
-    runpy.run_path(str(CARPETA_SCRIPTS / nombre), run_name='__main__')
+    monkeypatch.setattr(sys, 'argv', [name, *map(str, args)])
+    runpy.run_path(str(SCRIPTS_DIR / name), run_name='__main__')
 
 
-@pytest.fixture(name='rutas')
-def fixture_rutas(tmp_path, datos):
+@pytest.fixture(name='paths')
+def fixture_paths(tmp_path, data):
     """CSV etiquetado, CSV de transacciones nuevas y rutas de salida dentro de una carpeta temporal."""
-    datos.to_csv(tmp_path / 'etiquetados.csv', index=False)
-    datos.drop(columns='fraude').to_csv(tmp_path / 'nuevas.csv', index=False)
+    data.to_csv(tmp_path / 'labeled.csv', index=False)
+    data.drop(columns='fraude').to_csv(tmp_path / 'new.csv', index=False)
     return {
-        'etiquetados': tmp_path / 'etiquetados.csv',
-        'nuevas': tmp_path / 'nuevas.csv',
-        'modelo': tmp_path / 'models' / 'pipeline.joblib',
-        'predicciones': tmp_path / 'salida' / 'predicciones.csv',
+        'labeled': tmp_path / 'labeled.csv',
+        'new': tmp_path / 'new.csv',
+        'model': tmp_path / 'models' / 'pipeline.joblib',
+        'predictions': tmp_path / 'output' / 'predictions.csv',
     }
 
 
-def test_entrenar_y_predecir(monkeypatch, capsys, rutas):
-    """entrenar.py guarda el artefacto y predecir.py agrega probabilidad y decisión a cada transacción."""
-    _ejecutar_script(monkeypatch, 'entrenar.py', '--datos', rutas['etiquetados'], '--modelo', rutas['modelo'])
-    assert rutas['modelo'].exists()
+def test_train_and_predict(monkeypatch, capsys, paths):
+    """train.py guarda el artefacto y predict.py agrega probabilidad y decisión a cada transacción."""
+    _run_script(monkeypatch, 'train.py', '--data', paths['labeled'], '--model', paths['model'])
+    assert paths['model'].exists()
 
-    _ejecutar_script(
-        monkeypatch, 'predecir.py',
-        '--entrada', rutas['nuevas'], '--salida', rutas['predicciones'], '--modelo', rutas['modelo'],
+    _run_script(
+        monkeypatch, 'predict.py',
+        '--input', paths['new'], '--output', paths['predictions'], '--model', paths['model'],
     )
-    predicciones = pd.read_csv(rutas['predicciones'])
-    assert len(predicciones) == len(pd.read_csv(rutas['nuevas']))
-    assert predicciones['probabilidad_fraude'].between(0, 1).all()
-    assert set(predicciones['decision']) <= {'aprobar', 'rechazar'}
+    predictions = pd.read_csv(paths['predictions'])
+    assert len(predictions) == len(pd.read_csv(paths['new']))
+    assert predictions['probabilidad_fraude'].between(0, 1).all()
+    assert set(predictions['decision']) <= {'aprobar', 'rechazar'}
     assert 'transacciones evaluadas' in capsys.readouterr().out
 
 
-def test_validar_pipeline(monkeypatch, capsys, rutas):
-    """validar_pipeline.py imprime las métricas de cada fold y el resumen."""
-    _ejecutar_script(monkeypatch, 'validar_pipeline.py', '--datos', rutas['etiquetados'])
-    salida = capsys.readouterr().out
-    assert 'Fold 5/5 listo' in salida
-    assert 'ganancia_pct_maxima_media' in salida
+def test_validate_pipeline(monkeypatch, capsys, paths):
+    """validate_pipeline.py imprime las métricas de cada fold y el resumen."""
+    _run_script(monkeypatch, 'validate_pipeline.py', '--data', paths['labeled'])
+    output = capsys.readouterr().out
+    assert 'Fold 5/5 listo' in output
+    assert 'ganancia_pct_maxima_media' in output
 
 
-@pytest.mark.usefixtures('mlflow_temporal')
-def test_entrenar_y_validar_registran_en_mlflow(monkeypatch, capsys, rutas):
-    """Con --mlflow, validar registra su run y entrenar publica el pipeline en el registry con el alias de producción."""
-    _ejecutar_script(monkeypatch, 'validar_pipeline.py', '--datos', rutas['etiquetados'], '--mlflow')
-    _ejecutar_script(
-        monkeypatch, 'entrenar.py', '--datos', rutas['etiquetados'], '--modelo', rutas['modelo'], '--mlflow',
+@pytest.mark.usefixtures('temp_mlflow')
+def test_train_and_validate_log_to_mlflow(monkeypatch, capsys, paths):
+    """Con --mlflow, validate registra su run y train publica el pipeline en el registry con el alias de producción."""
+    _run_script(monkeypatch, 'validate_pipeline.py', '--data', paths['labeled'], '--mlflow')
+    _run_script(
+        monkeypatch, 'train.py', '--data', paths['labeled'], '--model', paths['model'], '--mlflow',
     )
     assert 'con alias "champion"' in capsys.readouterr().out
 
-    validacion = mlflow.search_runs(filter_string="attributes.run_name = 'validacion_pipeline'").iloc[0]
-    assert 'metrics.ganancia_pct_maxima_media' in validacion
-    artefactos = [artefacto.path for artefacto in MlflowClient().list_artifacts(validacion['run_id'])]
-    assert 'metricas_por_fold.json' in artefactos
+    validation = mlflow.search_runs(filter_string="attributes.run_name = 'validacion_pipeline'").iloc[0]
+    assert 'metrics.ganancia_pct_maxima_media' in validation
+    artifacts = [artifact.path for artifact in MlflowClient().list_artifacts(validation['run_id'])]
+    assert 'metricas_por_fold.json' in artifacts
 
-    assert validacion['tags.decision'] == 'elegido'
-    assert 'Validación del pipeline productivo' in validacion['tags.mlflow.note.content']
+    assert validation['tags.decision'] == 'elegido'
+    assert 'Validación del pipeline productivo' in validation['tags.mlflow.note.content']
 
-    version = MlflowClient().get_model_version_by_alias(NOMBRE_MODELO_REGISTRADO, ALIAS_PRODUCCION)
-    assert version.tags['run_validacion'] == validacion['run_id']
-    entrenamiento = mlflow.get_run(version.run_id)
-    assert entrenamiento.data.tags['decision'] == 'produccion'
-    assert entrenamiento.info.run_name == 'entrenamiento_pipeline'
-    assert entrenamiento.inputs.dataset_inputs[0].dataset.name == 'dataset'
+    version = MlflowClient().get_model_version_by_alias(REGISTERED_MODEL_NAME, PRODUCTION_ALIAS)
+    assert version.tags['run_validacion'] == validation['run_id']
+    training = mlflow.get_run(version.run_id)
+    assert training.data.tags['decision'] == 'produccion'
+    assert training.info.run_name == 'entrenamiento_pipeline'
+    assert training.inputs.dataset_inputs[0].dataset.name == 'dataset'
 
-    descargado = rutas['modelo'].parent / 'descargado.joblib'
-    _ejecutar_script(monkeypatch, 'descargar_modelo.py', '--modelo', descargado)
-    assert descargado.exists()
-    assert descargado.with_suffix('.json').exists()
+    downloaded = paths['model'].parent / 'downloaded.joblib'
+    _run_script(monkeypatch, 'download_model.py', '--model', downloaded)
+    assert downloaded.exists()
+    assert downloaded.with_suffix('.json').exists()
     assert 'v1' in capsys.readouterr().out

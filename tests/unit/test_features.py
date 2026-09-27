@@ -5,145 +5,145 @@ import pandas as pd
 import pytest
 
 from fraude_shipping.features import (
-    SUAVIZADO,
-    agrupar_paises,
-    ajustar_tasa_fraude,
-    aplicar_tasa_fraude,
-    cargar_datos,
-    columnas_categoricas,
-    construir_features,
-    crear_folds,
-    crear_perfil_onp,
-    obtener_paises_frecuentes,
-    preparar_categoricas,
-    tasa_fraude_oof,
+    SMOOTHING,
+    apply_fraud_rate,
+    build_features,
+    build_onp_profile,
+    categorical_columns,
+    fit_fraud_rate,
+    get_frequent_countries,
+    group_countries,
+    load_data,
+    make_folds,
+    oof_fraud_rate,
+    prepare_categoricals,
 )
 
 
-def test_cargar_datos_lee_la_fecha_como_datetime(tmp_path, datos):
+def test_load_data_parses_date_as_datetime(tmp_path, data):
     """La fecha del CSV se convierte a datetime para poder extraer la hora."""
-    ruta = tmp_path / 'datos.csv'
-    datos.to_csv(ruta, index=False)
-    assert pd.api.types.is_datetime64_any_dtype(cargar_datos(ruta)['fecha'])
+    path = tmp_path / 'data.csv'
+    data.to_csv(path, index=False)
+    assert pd.api.types.is_datetime64_any_dtype(load_data(path)['fecha'])
 
 
-def test_features_de_tiempo_y_flags(datos):
+def test_time_features_and_flags(data):
     """Hora, día de la semana y flags de valores especiales."""
-    features = construir_features(datos)
-    assert (features['hora'] == datos['fecha'].dt.hour).all()
-    assert (features['dia_semana'] == datos['fecha'].dt.dayofweek).all()
-    assert (features['f_negativo'] == (datos['f'] < 0)).all()
-    assert (features['d_tope'] == (datos['d'] == 50)).all()
-    assert (features['bc_nulo'] == datos['b'].isna()).all()
-    assert (features['j_frecuencia'] == datos['j'].map(datos['j'].value_counts())).all()
+    features = build_features(data)
+    assert (features['hora'] == data['fecha'].dt.hour).all()
+    assert (features['dia_semana'] == data['fecha'].dt.dayofweek).all()
+    assert (features['f_negativo'] == (data['f'] < 0)).all()
+    assert (features['d_tope'] == (data['d'] == 50)).all()
+    assert (features['bc_nulo'] == data['b'].isna()).all()
+    assert (features['j_frecuencia'] == data['j'].map(data['j'].value_counts())).all()
 
 
-def test_monto_entero():
+def test_whole_amount():
     """Un monto sin centavos se marca como entero."""
-    datos = pd.DataFrame({'monto': [10.0, 10.5, 7.01]})
-    features = construir_features(_con_columnas_minimas(datos))
+    data = pd.DataFrame({'monto': [10.0, 10.5, 7.01]})
+    features = build_features(_with_minimal_columns(data))
     assert list(features['monto_entero']) == [1, 0, 0]
 
 
-def test_ratio_con_denominador_cero_es_nulo(datos):
+def test_ratio_with_zero_denominator_is_null(data):
     """Dividir por un historial en cero da nulo, no infinito."""
-    datos = datos.copy()
-    datos.loc[0, 'l'] = 0
-    features = construir_features(datos)
+    data = data.copy()
+    data.loc[0, 'l'] = 0
+    features = build_features(data)
     assert np.isnan(features.loc[0, 'ratio_f_l'])
     assert np.isnan(features.loc[0, 'ratio_m_l'])
     assert np.isfinite(features['ratio_f_l'].dropna()).all()
 
 
-def test_actividad_reciente_solo_mira_hacia_atras():
+def test_recent_activity_only_looks_back():
     """Cada transacción cuenta solo las previas de su categoría de j, sin importar el orden de las filas."""
-    inicio = pd.Timestamp('2020-03-01 10:00')
-    datos = _con_columnas_minimas(pd.DataFrame({
+    start = pd.Timestamp('2020-03-01 10:00')
+    data = _with_minimal_columns(pd.DataFrame({
         'j': ['x', 'x', 'x', 'y'],
-        'fecha': [inicio + pd.Timedelta(minutes=120), inicio, inicio + pd.Timedelta(minutes=30), inicio],
+        'fecha': [start + pd.Timedelta(minutes=120), start, start + pd.Timedelta(minutes=30), start],
     }))
-    features = construir_features(datos)
+    features = build_features(data)
     assert list(features['j_transacciones_1h']) == [0, 0, 1, 0]
     assert list(features['j_transacciones_24h']) == [2, 0, 1, 0]
 
 
-def test_paises_frecuentes_y_agrupados():
+def test_frequent_and_grouped_countries():
     """Los países con menos de 100 transacciones pasan a "Otros" y el nulo se mantiene."""
-    paises = pd.Series(['AR'] * 100 + ['BR'] * 99)
-    assert obtener_paises_frecuentes(paises) == {'AR'}
-    agrupados = agrupar_paises(pd.Series(['AR', 'BR', None]), {'AR'})
-    assert agrupados.iloc[0] == 'AR'
-    assert agrupados.iloc[1] == 'Otros'
-    assert pd.isna(agrupados.iloc[2])
+    countries = pd.Series(['AR'] * 100 + ['BR'] * 99)
+    assert get_frequent_countries(countries) == {'AR'}
+    grouped = group_countries(pd.Series(['AR', 'BR', None]), {'AR'})
+    assert grouped.iloc[0] == 'AR'
+    assert grouped.iloc[1] == 'Otros'
+    assert pd.isna(grouped.iloc[2])
 
 
-def test_perfil_onp_con_nulo_y_n_decimal():
+def test_onp_profile_with_null_and_decimal_n():
     """El nulo de o es una categoría propia y n se lee como entero aunque llegue como 1.0."""
-    datos = pd.DataFrame({'o': [None, 'Y'], 'n': [1.0, 0], 'p': ['Y', 'N']})
-    assert list(crear_perfil_onp(datos)) == ['nulo_1_Y', 'Y_0_N']
+    data = pd.DataFrame({'o': [None, 'Y'], 'n': [1.0, 0], 'p': ['Y', 'N']})
+    assert list(build_onp_profile(data)) == ['nulo_1_Y', 'Y_0_N']
 
 
-def test_columnas_categoricas():
+def test_categorical_columns():
     """Solo se reconocen como categóricas las columnas de texto conocidas."""
-    assert columnas_categoricas(['a', 'g', 'perfil_onp', 'score', 'g_agrupado']) == ['g', 'perfil_onp', 'g_agrupado']
+    assert categorical_columns(['a', 'g', 'perfil_onp', 'score', 'g_agrupado']) == ['g', 'perfil_onp', 'g_agrupado']
 
 
-def test_preparar_categoricas_convierte_el_nulo_en_categoria(datos):
+def test_prepare_categoricals_turns_null_into_category(data):
     """Las categóricas pasan a dtype category con "nulo" y las numéricas no cambian."""
-    preparados = preparar_categoricas(datos, ['o', 'score'])
-    assert isinstance(preparados['o'].dtype, pd.CategoricalDtype)
-    assert 'nulo' in preparados['o'].cat.categories
-    assert preparados['o'].notna().all()
-    assert (preparados['score'] == datos['score']).all()
+    prepared = prepare_categoricals(data, ['o', 'score'])
+    assert isinstance(prepared['o'].dtype, pd.CategoricalDtype)
+    assert 'nulo' in prepared['o'].cat.categories
+    assert prepared['o'].notna().all()
+    assert (prepared['score'] == data['score']).all()
 
 
-def test_tasa_suavizada_coincide_con_la_formula():
+def test_smoothed_rate_matches_formula():
     """La tasa de cada categoría se acerca a la global según su cantidad de transacciones."""
-    categorias = pd.Series(['x', 'x', 'y', 'y'])
-    fraude = pd.Series([1, 1, 0, 0])
-    tasa, tasa_global = ajustar_tasa_fraude(categorias, fraude)
-    assert tasa_global == pytest.approx(0.5)
-    assert tasa['x'] == pytest.approx((2 + SUAVIZADO * 0.5) / (2 + SUAVIZADO))
-    assert tasa['y'] == pytest.approx((0 + SUAVIZADO * 0.5) / (2 + SUAVIZADO))
+    categories = pd.Series(['x', 'x', 'y', 'y'])
+    fraud = pd.Series([1, 1, 0, 0])
+    rate, global_rate = fit_fraud_rate(categories, fraud)
+    assert global_rate == pytest.approx(0.5)
+    assert rate['x'] == pytest.approx((2 + SMOOTHING * 0.5) / (2 + SMOOTHING))
+    assert rate['y'] == pytest.approx((0 + SMOOTHING * 0.5) / (2 + SMOOTHING))
 
 
-def test_categoria_no_vista_recibe_la_tasa_global():
+def test_unseen_category_gets_global_rate():
     """Una categoría que no estaba en train toma la tasa global."""
-    tasa = pd.Series({'x': 0.3})
-    aplicada = aplicar_tasa_fraude(pd.Series(['x', 'nueva']), tasa, 0.05)
-    assert list(aplicada) == pytest.approx([0.3, 0.05])
+    rate = pd.Series({'x': 0.3})
+    applied = apply_fraud_rate(pd.Series(['x', 'nueva']), rate, 0.05)
+    assert list(applied) == pytest.approx([0.3, 0.05])
 
 
-def test_tasa_oof_no_usa_la_etiqueta_de_la_propia_fila(datos):
+def test_oof_rate_does_not_use_own_label(data):
     """Cambiar la etiqueta de una fila no cambia su propia tasa out-of-fold."""
-    folds = crear_folds(datos['fraude'])
-    original = tasa_fraude_oof(datos['j'], datos['fraude'], folds)
-    fraude_modificado = datos['fraude'].copy()
-    fraude_modificado.iloc[0] = 1 - fraude_modificado.iloc[0]
-    modificada = tasa_fraude_oof(datos['j'], fraude_modificado, folds)
-    assert modificada.iloc[0] == pytest.approx(original.iloc[0])
+    folds = make_folds(data['fraude'])
+    original = oof_fraud_rate(data['j'], data['fraude'], folds)
+    modified_fraud = data['fraude'].copy()
+    modified_fraud.iloc[0] = 1 - modified_fraud.iloc[0]
+    modified = oof_fraud_rate(data['j'], modified_fraud, folds)
+    assert modified.iloc[0] == pytest.approx(original.iloc[0])
     assert original.notna().all()
 
 
-def test_folds_estratificados_y_deterministas(datos):
+def test_folds_are_stratified_and_deterministic(data):
     """Los folds cubren todas las filas una vez, mantienen la tasa de fraude y dependen solo de la semilla."""
-    folds = crear_folds(datos['fraude'])
-    validacion = np.concatenate([indices for _, indices in folds])
+    folds = make_folds(data['fraude'])
+    validation = np.concatenate([indices for _, indices in folds])
     assert len(folds) == 5
-    assert sorted(validacion) == list(range(len(datos)))
-    fraudes_por_fold = [datos['fraude'].iloc[indices].sum() for _, indices in folds]
-    assert max(fraudes_por_fold) - min(fraudes_por_fold) <= 1
-    assert all(np.array_equal(a[1], b[1]) for a, b in zip(folds, crear_folds(datos['fraude'])))
-    assert not np.array_equal(folds[0][1], crear_folds(datos['fraude'], semilla=7)[0][1])
+    assert sorted(validation) == list(range(len(data)))
+    frauds_per_fold = [data['fraude'].iloc[indices].sum() for _, indices in folds]
+    assert max(frauds_per_fold) - min(frauds_per_fold) <= 1
+    assert all(np.array_equal(first[1], second[1]) for first, second in zip(folds, make_folds(data['fraude'])))
+    assert not np.array_equal(folds[0][1], make_folds(data['fraude'], seed=7)[0][1])
 
 
-def _con_columnas_minimas(datos):
-    """Completa las columnas que construir_features necesita con valores neutros."""
-    base = {
+def _with_minimal_columns(data):
+    """Completa las columnas que build_features necesita con valores neutros."""
+    defaults = {
         'fecha': pd.Timestamp('2020-03-01'), 'j': 'x', 'monto': 10.0, 'b': 0.5, 'd': 1.0, 'e': 1.0, 'f': 1.0,
         'g': 'AR', 'h': 1, 'l': 1.0, 'm': 1.0, 'n': 1, 'o': 'Y', 'p': 'Y',
     }
-    for columna, valor in base.items():
-        if columna not in datos:
-            datos[columna] = valor
-    return datos
+    for column, value in defaults.items():
+        if column not in data:
+            data[column] = value
+    return data

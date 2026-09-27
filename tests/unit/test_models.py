@@ -2,12 +2,12 @@
 
 import pytest
 
-from fraude_shipping.experimentacion.modelos import crear_modelo
-from fraude_shipping.features import preparar_categoricas
+from fraude_shipping.experimentation.models import build_model
+from fraude_shipping.features import prepare_categoricals
 
 FEATURES = ['a', 'b', 'd', 'monto', 'score', 'g', 'o', 'p']
 # Pocos árboles o iteraciones para que cada modelo entrene en segundos
-PARAMETROS_RAPIDOS = {
+FAST_PARAMS = {
     'lightgbm': {'n_estimators': 20},
     'xgboost': {'n_estimators': 20},
     'catboost': {'iterations': 20},
@@ -16,18 +16,18 @@ PARAMETROS_RAPIDOS = {
 }
 
 
-@pytest.mark.parametrize('nombre_modelo', PARAMETROS_RAPIDOS)
-def test_cada_modelo_entrena_y_predice_probabilidades(datos, nombre_modelo):
+@pytest.mark.parametrize('model_name', FAST_PARAMS)
+def test_each_model_trains_and_predicts_probabilities(data, model_name):
     """Todos los modelos aceptan categóricas y nulos y devuelven una probabilidad por fila."""
-    preparados = preparar_categoricas(datos, FEATURES)
-    modelo = crear_modelo(nombre_modelo, FEATURES, PARAMETROS_RAPIDOS[nombre_modelo])
-    modelo.fit(preparados[FEATURES], preparados['fraude'])
-    probabilidad = modelo.predict_proba(preparados[FEATURES])[:, 1]
-    assert probabilidad.shape == (len(datos),)
-    assert ((probabilidad >= 0) & (probabilidad <= 1)).all()
+    prepared = prepare_categoricals(data, FEATURES)
+    model = build_model(model_name, FEATURES, FAST_PARAMS[model_name])
+    model.fit(prepared[FEATURES], prepared['fraude'])
+    probability = model.predict_proba(prepared[FEATURES])[:, 1]
+    assert probability.shape == (len(data),)
+    assert ((probability >= 0) & (probability <= 1)).all()
 
 
-def test_modelo_desconocido():
+def test_unknown_model():
     """Pedir un modelo que no está en el catálogo es un error explícito."""
     with pytest.raises(ValueError, match='Modelo no soportado'):
-        crear_modelo('svm', FEATURES)
+        build_model('svm', FEATURES)
