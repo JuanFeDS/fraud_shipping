@@ -11,7 +11,7 @@ Entender en qué se apoya el **LightGBM tuneado** del notebook 04 (conjunto `can
 
 | | |
 |---|---|
-| 🤖 Modelo | Parámetros, features y umbral leídos del run `validacion_lightgbm_tuneado` de MLflow |
+| 🤖 Modelo | Parámetros, features y umbral del run `validacion_lightgbm_tuneado` de MLflow, o de las constantes del pipeline productivo, que tienen los mismos valores |
 | 🔁 Datos | Entrenado con 4 de los 5 folds nuevos (semilla 7) y explicado sobre el quinto: **30.000 transacciones no vistas** |
 | 🌍 SHAP (TreeExplainer) | Aporte de cada variable a la predicción de cada transacción, en log-odds, sobre una muestra estratificada de 10.000 |
 | 📈 Dependencia parcial | Probabilidad media predicha al fijar una variable en cada valor |

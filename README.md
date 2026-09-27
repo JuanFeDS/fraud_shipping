@@ -120,7 +120,7 @@ poetry install
 ```
 
 ### Reproducir el análisis
-Ejecutar los notebooks en orden (`01` → `05`) desde `notebooks/`. El `04` registra los experimentos en un MLflow local (`mlflow.db`) y tarda más de 1,5 horas por la búsqueda de Optuna. El `05` lee el modelo elegido de ese MLflow, así que requiere haber corrido el `04`.
+Ejecutar los notebooks en orden (`01` → `05`) desde `notebooks/`. El `04` registra los experimentos en un MLflow local (`mlflow.db`) y tarda más de 1,5 horas por la búsqueda de Optuna. El `05` no requiere haber corrido el `04`: toma los hiperparámetros, las features y el umbral del pipeline productivo, o del run de MLflow si `MLFLOW_TRACKING_URI` está definida.
 
 ```bash
 poetry run mlflow ui --backend-store-uri sqlite:///mlflow.db   # explorar los experimentos locales
