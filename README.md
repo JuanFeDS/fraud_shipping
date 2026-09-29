@@ -81,10 +81,10 @@ fraude_shipping/
 ├── notebooks/                    # 01 exploración → 05 explicabilidad
 ├── docs/reports/                 # resumen ejecutivo de cada notebook
 ├── src/fraude_shipping/
-│   ├── features.py               # construcción de features (compartido)
+│   ├── features.py               # datos, folds, países y tasa de fraude por categoría (compartido)
 │   ├── profit.py                 # función de ganancia y métricas de negocio
 │   ├── registry.py               # MLflow: conexión, datasets, model registry
-│   ├── experimentation/          # usado por los notebooks: modelos, validación cruzada, tracking
+│   ├── experimentation/          # usado por los notebooks: variables candidatas, modelos, validación cruzada, tracking
 │   └── production/               # lo que se despliega: pipeline y API (sin MLflow)
 ├── scripts/                      # entrenar, validar, predecir en batch, descargar del registry
 ├── tests/                        # unit/ e integration/

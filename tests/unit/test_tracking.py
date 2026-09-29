@@ -4,7 +4,7 @@ import mlflow
 import pytest
 
 from fraude_shipping.experimentation import tracking
-from fraude_shipping.features import build_features
+from fraude_shipping.experimentation.candidate_features import build_features
 from fraude_shipping.registry import setup_mlflow
 
 FEATURES = ['a', 'j', 'monto', 'score', 'perfil_onp']

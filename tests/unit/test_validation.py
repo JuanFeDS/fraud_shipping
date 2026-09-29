@@ -4,8 +4,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from fraude_shipping.experimentation.candidate_features import build_features
 from fraude_shipping.experimentation.validation import add_fraud_rates, compute_fold_metrics, cross_validate
-from fraude_shipping.features import apply_fraud_rate, build_features, fit_fraud_rate, make_folds
+from fraude_shipping.features import apply_fraud_rate, fit_fraud_rate, make_folds
 from fraude_shipping.profit import THRESHOLDS
 
 FEATURES = ['a', 'b', 'd', 'monto', 'score', 'g_agrupado', 'perfil_onp', 'hora']
