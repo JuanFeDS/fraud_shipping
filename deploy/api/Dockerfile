@@ -11,6 +11,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ src/
 COPY models/fraud_pipeline.joblib models/fraud_pipeline.json models/
 
+# Sin privilegios de root: si alguien compromete el proceso, no controla el contenedor
+RUN useradd --create-home --uid 1000 api
+USER api
+
 ENV PYTHONPATH=/app/src \
     MODEL_PATH=/app/models/fraud_pipeline.joblib \
     PORT=8080
