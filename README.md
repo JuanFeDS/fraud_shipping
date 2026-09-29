@@ -165,6 +165,9 @@ poetry export --only main --without-hashes -f requirements.txt -o deploy/api/req
 gcloud builds submit . --config=deploy/api/cloudbuild.yaml --substitutions=_IMAGE=<imagen>
 gcloud run deploy api-fraude --image=<imagen> --set-secrets=FRAUDE_API_KEY=api-key:latest ...
 ```
+Configuración de la infraestructura, aplicada una sola vez:
+- `deploy/supabase/restrict_data_api.sql`: quita a la Data API de Supabase el acceso a las tablas de MLflow, que solo se usan con conexión directa a Postgres.
+- `deploy/artifact_registry/cleanup_policy.json`: conserva las 3 imágenes más recientes de cada paquete y borra el resto (`gcloud artifacts repositories set-cleanup-policies fraude-shipping --location=us-east1 --policy=...`).
 
 ---
 
@@ -176,6 +179,18 @@ gcloud run deploy api-fraude --image=<imagen> --set-secrets=FRAUDE_API_KEY=api-k
 | ⚡ API | https://api-fraude-1027826425795.us-east1.run.app/docs | `/docs` y `/salud` abiertos; `/predecir` con API key a solicitud |
 
 Ambos servicios escalan a cero, así que la primera petición después de un rato inactivo puede tardar unos segundos.
+
+**MLflow · experimentos del notebook 04**, con los modelos registrados vinculados a su entrenamiento:
+
+![Runs del experimento en MLflow](docs/images/mlflow_experimentos.png)
+
+**MLflow · model registry**: la v3 con el alias `champion`, su umbral y sus métricas de validación:
+
+![Model registry en MLflow](docs/images/mlflow_registry.png)
+
+**API · documentación interactiva** de `/predecir`:
+
+![Documentación de la API](docs/images/api_docs.png)
 
 ---
 
