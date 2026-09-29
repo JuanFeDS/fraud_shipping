@@ -1,0 +1,4 @@
+[
+  {"name": "borrar-antiguas", "action": {"type": "Delete"}, "condition": {"tagState": "ANY", "olderThan": "1d"}},
+  {"name": "conservar-3-recientes", "action": {"type": "Keep"}, "mostRecentVersions": {"keepCount": 3}}
+]
