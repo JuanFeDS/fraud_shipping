@@ -1,9 +1,26 @@
-fastapi==0.141.1
-uvicorn==0.54.0
-lightgbm==4.7.0
-pandas==3.0.6
-numpy==2.5.3
-scikit-learn==1.9.1
-joblib==1.6.0
-pydantic==2.13.5
-pyarrow==25.0.1
+annotated-doc==0.0.5 ; python_version >= "3.12" and python_version < "4.0"
+annotated-types==0.8.0 ; python_version >= "3.12" and python_version < "4.0"
+anyio==4.15.1 ; python_version >= "3.12" and python_version < "4.0"
+click==8.5.0 ; python_version >= "3.12" and python_version < "4.0"
+cloudpickle==3.1.2 ; python_version >= "3.12" and python_version < "4.0"
+fastapi==0.141.1 ; python_version >= "3.12" and python_version < "4.0"
+h11==0.16.0 ; python_version >= "3.12" and python_version < "4.0"
+idna==3.20 ; python_version >= "3.12" and python_version < "4.0"
+joblib==1.6.0 ; python_version >= "3.12" and python_version < "4.0"
+lightgbm==4.7.0 ; python_version >= "3.12" and python_version < "4.0"
+narwhals==2.26.0 ; python_version >= "3.12" and python_version < "4.0"
+numpy==2.5.3 ; python_version >= "3.12" and python_version < "4.0"
+pandas==3.0.6 ; python_version >= "3.12" and python_version < "4.0"
+pyarrow==25.0.1 ; python_version >= "3.12" and python_version < "4.0"
+pydantic-core==2.46.5 ; python_version >= "3.12" and python_version < "4.0"
+pydantic==2.13.5 ; python_version >= "3.12" and python_version < "4.0"
+python-dateutil==2.9.0.post0 ; python_version >= "3.12" and python_version < "4.0"
+scikit-learn==1.9.1 ; python_version >= "3.12" and python_version < "4.0"
+scipy==1.18.1 ; python_version >= "3.12" and python_version < "4.0"
+six==1.17.0 ; python_version >= "3.12" and python_version < "4.0"
+starlette==1.7.0 ; python_version >= "3.12" and python_version < "4.0"
+threadpoolctl==3.7.0 ; python_version >= "3.12" and python_version < "4.0"
+typing-extensions==4.16.0 ; python_version >= "3.12" and python_version < "4.0"
+typing-inspection==0.4.4 ; python_version >= "3.12" and python_version < "4.0"
+tzdata==2026.4 ; python_version >= "3.12" and python_version < "4.0" and (sys_platform == "win32" or sys_platform == "emscripten")
+uvicorn==0.54.0 ; python_version >= "3.12" and python_version < "4.0"
