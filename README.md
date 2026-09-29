@@ -141,6 +141,8 @@ FRAUDE_API_KEY=<una-clave> poetry run uvicorn fraude_shipping.production.api:app
 ```
 Documentación interactiva en http://127.0.0.1:8000/docs. La API no arranca sin `FRAUDE_API_KEY`: si la variable se pierde en un despliegue, falla cerrada en lugar de quedar abierta.
 
+`fecha` se exige **con zona horaria** (por ejemplo, `2020-04-15T02:30:00-03:00`) y se convierte a UTC−3 antes de calcular la hora del día. Es la zona que se supone para el dataset (casi todo Brasil y Argentina), y hay que confirmarla con los dueños de los datos. En Cloud Run (1 vCPU), el servidor decide en **20 ms (p50) y 28 ms (p99)**, medido con 300 requests secuenciales.
+
 ### Variables de entorno
 
 | Variable | Uso |
