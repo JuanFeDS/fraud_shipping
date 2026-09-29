@@ -134,7 +134,7 @@ Superar al baseline (**77,7% de la ganancia máxima**) con cambios que se sosten
 ## ⚠️ Supuestos y limitaciones
 
 - La métrica es **ruidosa**: cambios triviales mueven la ganancia ~0,3 puntos porque cambian el umbral elegido. Solo se consideran mejoras las que se repiten en la mayoría de los folds.
-- La selección usó **validación aleatoria**. La validación out-of-time del modelo final la respalda (−0,4 puntos en promedio), pero son solo tres semanas de un período atípico.
+- La selección usó **validación aleatoria**. La validación out-of-time del modelo final la respalda (−0,4 puntos en las tres últimas semanas y −1,2 con la del 25/03, que se entrena con poca historia), pero son solo cuatro semanas de un período atípico.
 - La partición de la semilla 7 se usó para cinco decisiones: validar el tuning, los pesos por monto, quitar `perfil_onp`, el umbral y el 78,9% final. Solo es "nueva" respecto de Optuna. La prueba limpia de hiperparámetros y umbral es la última semana, elegidos solo con el pasado (80,0%); quitar `perfil_onp` se decidió con todos los datos.
 - `j_frecuencia` y los países frecuentes se calculan con todo el dataset antes de separar los folds en las comparaciones del notebook (no usan la etiqueta). El pipeline productivo lo hace solo con train y reproduce el resultado.
 - El resultado depende de que `score` esté disponible al momento de decidir, igual que en el baseline.

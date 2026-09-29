@@ -55,7 +55,7 @@ Se comparó la CV aleatoria con una **CV temporal** (ventana expansiva semanal):
 | Aleatoria | 0,872 ± 0,007 | 77,5 ± 1,5 |
 | Temporal | 0,866 ± 0,004 | 75,6 ± 2,6 |
 
-El ranking es equivalente, y la diferencia en ganancia queda dentro de la variación entre folds. Incluso entrenado con solo 2 semanas, el modelo predice semanas no vistas con un AUC de 0,861. Esto justifica usar CV aleatoria, que aprovecha todos los datos.
+El ranking es equivalente, y la diferencia en ganancia queda dentro de la variación entre folds. Incluso entrenado con solo 2 semanas, el modelo predice semanas no vistas con un AUC de 0,861. Esto justifica usar CV aleatoria, que aprovecha todos los datos. Con el modelo final, el notebook 06 lo revisa semana a semana: la ganancia varía ~2,5 puntos entre semanas, más que entre folds.
 
 ### 6. 🛡️ Robusto al supuesto sobre `score`
 Sin `score`, el modelo pierde solo **1,3 puntos** y sigue superando ampliamente a la referencia. Si en producción `score` no estuviera disponible a tiempo, la solución seguiría siendo válida.
