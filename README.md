@@ -52,7 +52,7 @@ El modelo final se validó con folds que no intervinieron en la búsqueda de hip
 - 🔤 **La variable `j` cruda perjudicaba al modelo**: LightGBM memorizaba sus 8.324 categorías. Reemplazarla por su tasa de fraude (calculada dentro de cada fold) y su frecuencia fue la mejora individual más grande.
 - 🎛️ **El tuning aporta +0,4 puntos medidos con otra partición**: la búsqueda mostraba +0,7, pero la mitad era optimismo por elegir y evaluar con los mismos folds.
 - 🧹 **`perfil_onp` se quitó del modelo final**: la misma ganancia con una variable menos, porque `o` ya captura su señal.
-- 🎚️ **El umbral es el teórico (0,20)**, el óptimo con CV aleatoria. En las últimas semanas, uno más bajo habría ganado ~1 punto, pero elegido solo con semanas previas (0,12) empata con 0,20 en la siguiente: se mantiene 0,20 y se revisa con varias semanas de etiquetas maduras.
+- 🎚️ **El umbral es el teórico (0,20)**, el óptimo con CV aleatoria. En las últimas semanas, uno más bajo habría ganado ~1 punto, pero elegido solo con semanas previas (0,12) no se distingue de 0,20 en la siguiente. Se mantiene 0,20, que sale de los costos; si cambia la tasa de fraude, se corrigen las probabilidades, no el umbral.
 - 🔬 **`score` es la variable más valiosa** (8,3 puntos de ganancia si se desordena, seguida de `o` con 6,3) y la raíz de los errores más caros.
 
 Los reportes ejecutivos de cada etapa están en [`docs/reports/`](docs/reports/).

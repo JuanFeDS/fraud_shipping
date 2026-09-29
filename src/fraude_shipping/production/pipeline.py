@@ -39,8 +39,8 @@ LIGHTGBM_PARAMS = {
     'reg_alpha': 1.608317898022548,
     'reg_lambda': 3.025159385030446,
 }
-# Umbral teórico de la matriz de costos (aprobar si 0,25·(1−p) > p). Es el óptimo con CV aleatoria, y un umbral elegido
-# solo con semanas previas no lo supera en la siguiente (notebook 06)
+# Umbral teórico de la matriz de costos (aprobar si 0,25·(1−p) > p). Es el óptimo con CV aleatoria, y uno elegido solo
+# con semanas previas no se distingue de él en la siguiente (notebook 06)
 THRESHOLD = 0.20
 
 
