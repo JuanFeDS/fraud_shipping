@@ -47,12 +47,12 @@ El objetivo es construir un modelo que prediga si una transacción es fraudulent
 | 🟠 Baseline (LightGBM, variables originales) | 77,7 | 0,872 | 0,437 |
 | 🏆 **Modelo final** (LightGBM tuneado, `candidatas` sin `perfil_onp`, umbral 0,20) | **78,9 ± 1,3** | **0,889** | **0,474** |
 
-El modelo final se validó con folds que no intervinieron en la búsqueda de hiperparámetros, y el pipeline productivo reproduce ese resultado. Las claves del camino:
+El modelo final se validó con folds que no intervinieron en la búsqueda de hiperparámetros, y el pipeline productivo reproduce ese resultado. Prediciendo cada semana solo con el pasado, la ganancia varía más que entre folds: **~77%, entre 74% y 80% según la semana**. Las claves del camino:
 
 - 🔤 **La variable `j` cruda perjudicaba al modelo**: LightGBM memorizaba sus 8.324 categorías. Reemplazarla por su tasa de fraude (calculada dentro de cada fold) y su frecuencia fue la mejora individual más grande.
-- 🎛️ **El tuning aporta +0,4 puntos medidos con folds nuevos**: la búsqueda mostraba +0,7, pero la mitad era optimismo por elegir y evaluar con los mismos folds.
+- 🎛️ **El tuning aporta +0,4 puntos medidos con otra partición**: la búsqueda mostraba +0,7, pero la mitad era optimismo por elegir y evaluar con los mismos folds.
 - 🧹 **`perfil_onp` se quitó del modelo final**: la misma ganancia con una variable menos, porque `o` ya captura su señal.
-- 🎚️ **El umbral es el teórico (0,20)**, y coincide con el óptimo validado. Prediciendo semanas futuras (73,7%, 77,1% y 79,5% en las tres últimas), un umbral algo más bajo habría ganado ~1 punto: en producción hay que recalibrarlo con etiquetas recientes.
+- 🎚️ **El umbral es el teórico (0,20)**, el óptimo con CV aleatoria. En las últimas semanas, uno más bajo habría ganado ~1 punto, pero elegido solo con semanas previas (0,12) empata con 0,20 en la siguiente: se mantiene 0,20 y se revisa con varias semanas de etiquetas maduras.
 - 🔬 **`score` es la variable más valiosa** (8,3 puntos de ganancia si se desordena, seguida de `o` con 6,3) y la raíz de los errores más caros.
 
 Los reportes ejecutivos de cada etapa están en [`docs/reports/`](docs/reports/).
@@ -78,7 +78,7 @@ Los reportes ejecutivos de cada etapa están en [`docs/reports/`](docs/reports/)
 ```
 fraude_shipping/
 ├── data/raw/dataset.csv          # dataset del desafío
-├── notebooks/                    # 01 exploración → 05 explicabilidad
+├── notebooks/                    # 01 exploración → 06 umbral en el tiempo
 ├── docs/reports/                 # resumen ejecutivo de cada notebook
 ├── src/fraude_shipping/
 │   ├── features.py               # datos, folds, países y tasa de fraude por categoría (compartido)
@@ -121,7 +121,7 @@ poetry install
 ```
 
 ### Reproducir el análisis
-Ejecutar los notebooks en orden (`01` → `05`) desde `notebooks/`. El `04` registra los experimentos en un MLflow local (`mlflow.db`) y tarda más de 1,5 horas por la búsqueda de Optuna. El `05` no requiere haber corrido el `04`: toma los hiperparámetros, las features y el umbral del pipeline productivo, o del run de MLflow si `MLFLOW_TRACKING_URI` está definida.
+Ejecutar los notebooks en orden (`01` → `06`) desde `notebooks/`. El `04` registra los experimentos en un MLflow local (`mlflow.db`) y tarda más de 1,5 horas por la búsqueda de Optuna. El `05` no requiere haber corrido el `04`: toma los hiperparámetros, las features y el umbral del pipeline productivo, o del run de MLflow si `MLFLOW_TRACKING_URI` está definida. El `06` usa solo el pipeline productivo y tarda ~3 minutos.
 
 ```bash
 poetry run mlflow ui --backend-store-uri sqlite:///mlflow.db   # explorar los experimentos locales

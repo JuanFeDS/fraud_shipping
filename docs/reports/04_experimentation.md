@@ -102,12 +102,12 @@ Superar al baseline (**77,7% de la ganancia máxima**) con cambios que se sosten
 ### 8. 🏁 Sin `perfil_onp`, el umbral óptimo coincide con el teórico
 - Validado como **pipeline productivo** en los folds nuevos (tablas de `j` y de países aprendidas solo con train), el modelo final da **78,9% ± 1,3** con umbral 0,20, y 0,20 es también su óptimo. Con 0,15 da 78,7%.
 - La calibración en montos altos mejora: en la franja 0,15–0,20, ponderando por monto, 0,186 observado frente a 0,174 predicho.
-- Entre 0,15 y 0,20 la diferencia no es significativa (+0,22, IC95 de −0,33 a +0,71). Se usa **0,20** porque se deduce de la matriz de costos y coincide con el óptimo: no hace falta ajustarlo con los datos.
+- Entre 0,15 y 0,20 la diferencia no es significativa (+0,22, IC95 de −0,33 a +0,71). Se usa **0,20**, el umbral teórico de la matriz de costos, que con CV aleatoria es también el óptimo.
 
 ### 9. ⏳ Prediciendo el futuro, el modelo final pierde poco
-- Entrenando solo con el pasado, las tres últimas semanas dan **73,7%, 77,1% y 79,5%**: −0,4 puntos en promedio frente a la CV aleatoria en las mismas filas. La tasa de `j` calculada solo con el pasado no se degrada.
+- Entrenando solo con el pasado, las tres últimas semanas dan **73,7%, 77,1% y 79,5%**: −0,4 puntos en promedio frente a la CV aleatoria en esas mismas filas. Entre semanas la ganancia varía más que entre folds. La tasa de `j` calculada solo con el pasado no se degrada.
 - **Elegir los hiperparámetros con todos los datos no infló el resultado**: con Optuna repetido solo con el pasado y su umbral (0,19), la última semana da 80,0%, frente a 79,5% del modelo final.
-- **En el tiempo, un umbral más bajo habría ganado**: con 0,15, entre +0,5 y +1,6 puntos en cada semana. Al predecir el futuro, el modelo parece subestimar el riesgo en la franja de decisión. Se mantiene 0,20 (elegirlo con estas semanas sería usar la evaluación para decidir), pero en producción el umbral debe recalibrarse con etiquetas recientes.
+- **En el tiempo, un umbral más bajo habría ganado**: con 0,15, entre +0,5 y +1,6 puntos en cada semana. Al predecir el futuro, el modelo parece subestimar el riesgo en la franja de decisión. Elegirlo con estas semanas sería usar la evaluación para decidir; el notebook 06 lo elige solo con el pasado ([resumen](06_temporal_threshold.md)).
 
 ### 10. 🎚️ Un umbral por segmento no mejora de forma concluyente
 - Elegidos con el pasado y evaluados en la última semana: por país, −0,01 puntos; por tramo de monto, +0,56 (más estricto entre 100 y 300 de monto). Sobre una sola semana, esa diferencia está dentro del ruido.
@@ -120,20 +120,22 @@ Superar al baseline (**77,7% de la ganancia máxima**) con cambios que se sosten
 | 🌳 Algoritmo | LightGBM tuneado, sin pesos por monto |
 | 🧱 Features | Variables originales sin `g` ni `j`, más `g_agrupado`, `hora`, `j_frecuencia` y la tasa de fraude de `j` calculada dentro de cada fold (19 en total) |
 | 🎛️ Hiperparámetros | `n_estimators` 481, `learning_rate` 0,019, `num_leaves` 172, `min_child_samples` 262, `subsample` 0,96, `colsample_bytree` 0,96, `reg_alpha` 1,61, `reg_lambda` 3,03 |
-| 🎚️ Umbral | 0,20: el teórico de la matriz de costos, que coincide con el óptimo validado |
+| 🎚️ Umbral | 0,20: el teórico de la matriz de costos y el óptimo con CV aleatoria; elegido solo con el pasado, otro umbral no lo mejora (notebook 06) |
 | 📏 Resultado (pipeline, folds nuevos) | **78,9% ± 1,3 de la ganancia máxima**, AUC-ROC 0,889, AUC-PR 0,474 |
-| ⏳ Out-of-time | 73,7%, 77,1% y 79,5% en las tres últimas semanas (−0,4 frente a la CV aleatoria) |
+| ⏳ Out-of-time | 73,7%, 77,1% y 79,5% en las tres últimas semanas (−0,4 frente a la CV aleatoria en las mismas filas) |
 | 📈 Mejora sobre el baseline | ~+1,2 puntos (77,7% → 78,9%) y sobre aprobar todo, ~+15,5 puntos (63,4% → 78,9%) |
 
 ## 🛠️ Próximos pasos
 
 - 🔬 Explicar el modelo elegido: qué variables usa, con qué forma y cuánto vale cada una en ganancia (notebook 05).
-- 🎚️ En producción, recalibrar el umbral con etiquetas recientes y probar un umbral por tramo de monto con más semanas.
+- 🎚️ Elegir el umbral solo con el pasado (notebook 06).
+- 🎚️ En producción, revisar el umbral con varias semanas de etiquetas maduras y probar un umbral por tramo de monto.
 
 ## ⚠️ Supuestos y limitaciones
 
 - La métrica es **ruidosa**: cambios triviales mueven la ganancia ~0,3 puntos porque cambian el umbral elegido. Solo se consideran mejoras las que se repiten en la mayoría de los folds.
-- La selección usó **validación aleatoria**. La validación out-of-time del modelo final la respalda (−0,4 puntos en promedio), pero son solo tres semanas de un período atípico, y en el tiempo un umbral más bajo habría ganado.
+- La selección usó **validación aleatoria**. La validación out-of-time del modelo final la respalda (−0,4 puntos en promedio), pero son solo tres semanas de un período atípico.
+- La partición de la semilla 7 se usó para cinco decisiones: validar el tuning, los pesos por monto, quitar `perfil_onp`, el umbral y el 78,9% final. Solo es "nueva" respecto de Optuna. La prueba limpia de hiperparámetros y umbral es la última semana, elegidos solo con el pasado (80,0%); quitar `perfil_onp` se decidió con todos los datos.
 - `j_frecuencia` y los países frecuentes se calculan con todo el dataset antes de separar los folds en las comparaciones del notebook (no usan la etiqueta). El pipeline productivo lo hace solo con train y reproduce el resultado.
 - El resultado depende de que `score` esté disponible al momento de decidir, igual que en el baseline.
 - Los algoritmos distintos de LightGBM se compararon con sus **parámetros por defecto**. XGBoost, en particular, podría mejorar con ajuste.
