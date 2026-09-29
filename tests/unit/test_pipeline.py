@@ -1,4 +1,4 @@
-"""Pipeline productivo: point-in-time, categorías no vistas, umbral y persistencia."""
+"""Pipeline productivo: tablas aprendidas solo en fit, categorías no vistas, umbral y persistencia."""
 
 import copy
 

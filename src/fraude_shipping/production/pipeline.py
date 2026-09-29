@@ -10,7 +10,6 @@ from fraude_shipping.features import (
     ORIGINAL_COLUMNS,
     SEED,
     apply_fraud_rate,
-    build_onp_profile,
     categorical_columns,
     fit_fraud_rate,
     get_frequent_countries,
@@ -24,7 +23,7 @@ MODEL_PATH = Path(__file__).resolve().parents[3] / 'models' / 'fraud_pipeline.jo
 NUMERIC_COLUMNS = [column for column in ORIGINAL_COLUMNS if column not in ('g', 'j', 'o', 'p')]
 MODEL_FEATURES = [
     *(column for column in ORIGINAL_COLUMNS if column not in ('g', 'j')),
-    'g_agrupado', 'j_frecuencia', 'perfil_onp', 'hora', 'j_tasa_fraude',
+    'g_agrupado', 'j_frecuencia', 'hora', 'j_tasa_fraude',
 ]
 MODEL_CATEGORICALS = categorical_columns(MODEL_FEATURES)
 
@@ -40,14 +39,15 @@ LIGHTGBM_PARAMS = {
     'reg_alpha': 1.608317898022548,
     'reg_lambda': 3.025159385030446,
 }
-THRESHOLD = 0.15
+# Umbral teórico de la matriz de costos (aprobar si 0,25·(1−p) > p); coincide con el óptimo validado del pipeline
+THRESHOLD = 0.20
 
 
 class FraudPipeline:
     """Transforma transacciones crudas en features, estima la probabilidad de fraude y decide aprobar o rechazar."""
 
     # Todo lo que depende de otras transacciones (tasa y frecuencia de j, países frecuentes, categorías) se aprende
-    # en `fit`, así que `transform` nunca usa información de los datos a predecir (point-in-time)
+    # en `fit`, así que `transform` nunca usa información de los datos a predecir
 
     def __init__(self, params=None, threshold=THRESHOLD):
         self.params = LIGHTGBM_PARAMS if params is None else params
@@ -115,7 +115,6 @@ class FraudPipeline:
         features['p'] = data['p']
         features['g_agrupado'] = group_countries(data['g'], self.frequent_countries)
         features['j_frecuencia'] = data['j'].map(self.j_frequency).fillna(0).astype(float)
-        features['perfil_onp'] = build_onp_profile(data)
         features['hora'] = pd.to_datetime(data['fecha']).dt.hour
         return features
 

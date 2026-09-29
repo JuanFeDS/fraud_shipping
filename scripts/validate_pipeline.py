@@ -57,7 +57,8 @@ def log_validation(data, data_path, result):
     )
     with mlflow.start_run(run_name=VALIDATION_RUN_NAME):
         mlflow.set_tags({
-            'etapa': 'validacion_pipeline', 'modelo': 'lightgbm', 'decision': 'elegido', 'conjunto_features': 'candidatas',
+            'etapa': 'validacion_pipeline', 'modelo': 'lightgbm', 'decision': 'elegido',
+            'conjunto_features': 'candidatas_sin_perfil_onp',
             'validacion': 'folds_nuevos', 'origen': 'scripts/validate_pipeline.py', DESCRIPTION_TAG: description,
         })
         mlflow.log_params({**LIGHTGBM_PARAMS, 'umbral': THRESHOLD, 'semilla_folds': VALIDATION_SEED})
