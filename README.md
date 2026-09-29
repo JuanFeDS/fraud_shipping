@@ -11,7 +11,7 @@
   <img src="https://img.shields.io/badge/FastAPI-0.141-009688?logo=fastapi&logoColor=white&style=flat-square" />
   <img src="https://img.shields.io/badge/Cloud_Run-GCP-4285F4?logo=googlecloud&logoColor=white&style=flat-square" />
   <img src="https://img.shields.io/badge/Supabase-Postgres-3ECF8E?logo=supabase&logoColor=white&style=flat-square" />
-  <img src="https://github.com/JuanFeDS/proyecto/actions/workflows/tests.yml/badge.svg" />
+  <img src="https://github.com/JuanFeDS/fraud_shipping/actions/workflows/tests.yml/badge.svg" />
 </p>
 
 Modelo de machine learning que predice la probabilidad de fraude de cada transacción y decide aprobarla o rechazarla para **maximizar la ganancia del negocio**: cada legítima aprobada deja el 25% de su monto y cada fraude aprobado pierde el 100%. Incluye el análisis completo en notebooks, un pipeline productivo con inferencia batch y API, experimentos y model registry en MLflow, y el despliegue en Google Cloud Run.
@@ -57,7 +57,7 @@ El modelo final se validó con folds que no intervinieron en la búsqueda de hip
 - 🛟 **Sin `score`, un modelo de contingencia da 77,0%**; rechazar por monto, en cambio, queda por debajo de aprobar todo.
 - 🔬 **`score` es la variable más valiosa** (8,3 puntos de ganancia si se desordena, seguida de `o` con 6,3) y la raíz de los errores más caros.
 
-El informe de la solución está en [`docs/report.pdf`](docs/report.pdf) y las respuestas a las preguntas 3 a 5, en [`docs/challenge_answers.pdf`](docs/challenge_answers.pdf). Los reportes ejecutivos de cada etapa están en [`docs/reports/`](docs/reports/).
+La entrega del desafío (modelo y código, informe y respuestas a las preguntas 3 a 5) está en un solo documento: [`docs/report.pdf`](docs/report.pdf). Los reportes ejecutivos de cada etapa están en [`docs/reports/`](docs/reports/).
 
 ---
 
@@ -120,8 +120,8 @@ flowchart LR
 
 ### Instalación
 ```bash
-git clone https://github.com/JuanFeDS/proyecto.git
-cd proyecto
+git clone https://github.com/JuanFeDS/fraud_shipping.git
+cd fraud_shipping
 poetry install
 ```
 
