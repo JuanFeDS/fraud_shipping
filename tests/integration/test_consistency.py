@@ -38,11 +38,12 @@ def test_row_by_row_matches_batch(real_pipeline, real_data):
     np.testing.assert_allclose(row_by_row, batch)
 
 
-def test_api_matches_batch(real_pipeline, real_data):
+def test_api_matches_batch(real_pipeline, real_data, monkeypatch):
     """La API devuelve la misma probabilidad y decisión que el scoring batch."""
     _, test = real_data
+    monkeypatch.setenv('FRAUDE_API_KEY', 'clave-de-prueba')
     app.state.pipeline = real_pipeline
-    client = TestClient(app)
+    client = TestClient(app, headers={'X-API-Key': 'clave-de-prueba'})
     sample = test.head(20)
     expected = real_pipeline.predict(sample)
     for (_, row), (_, prediction) in zip(sample.iterrows(), expected.iterrows()):

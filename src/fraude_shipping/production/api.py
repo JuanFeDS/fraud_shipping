@@ -52,6 +52,9 @@ class Prediction(BaseModel):
 @asynccontextmanager
 async def lifespan(application):
     """Carga el pipeline una sola vez al iniciar la API, junto con la versión registrada si viene de MLflow."""
+    # Falla cerrada: si el despliegue pierde la API key, la API no arranca en lugar de quedar abierta
+    if not os.environ.get('FRAUDE_API_KEY'):
+        raise RuntimeError('Falta la variable de entorno FRAUDE_API_KEY')
     path = Path(os.environ.get('MODEL_PATH', MODEL_PATH))
     application.state.pipeline = FraudPipeline.load(path)
     metadata_path = path.with_suffix('.json')
@@ -65,10 +68,10 @@ app = FastAPI(title='Prevención de fraude', lifespan=lifespan)
 
 
 def verify_api_key(api_key: str | None = Security(API_KEY_HEADER)):
-    """Exige la API key si la variable FRAUDE_API_KEY está definida; sin ella (desarrollo local) la API queda abierta."""
+    """Exige la API key de FRAUDE_API_KEY; si la variable falta, rechaza todo en lugar de quedar abierta."""
     expected = os.environ.get('FRAUDE_API_KEY')
     # compare_digest evita que el tiempo de respuesta revele cuántos caracteres de la key coinciden
-    if expected and not (api_key and compare_digest(api_key.encode(), expected.encode())):
+    if not (expected and api_key and compare_digest(api_key.encode(), expected.encode())):
         raise HTTPException(status_code=401, detail='API key inválida o ausente')
 
 

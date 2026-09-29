@@ -7,14 +7,16 @@ from fastapi.testclient import TestClient
 
 from fraude_shipping.production.api import app
 
+API_KEY = 'clave-correcta'
+
 
 @pytest.fixture(name='client')
 def fixture_client(pipeline, monkeypatch):
-    """Cliente de la API con el pipeline sintético inyectado y sin API key, salvo que el test la configure."""
-    monkeypatch.delenv('FRAUDE_API_KEY', raising=False)
+    """Cliente de la API con el pipeline sintético inyectado y la API key configurada, que envía en cada request."""
+    monkeypatch.setenv('FRAUDE_API_KEY', API_KEY)
     app.state.pipeline = pipeline
     app.state.model_version = None
-    return TestClient(app)
+    return TestClient(app, headers={'X-API-Key': API_KEY})
 
 
 @pytest.fixture(name='transaction')
@@ -75,6 +77,7 @@ def test_startup_loads_configured_artifact(tmp_path, monkeypatch, pipeline, meta
     if metadata is not None:
         path.with_suffix('.json').write_text(json.dumps(metadata), encoding='utf-8')
     monkeypatch.setenv('MODEL_PATH', str(path))
+    monkeypatch.setenv('FRAUDE_API_KEY', API_KEY)
     app.state.pipeline = None
     with TestClient(app) as client:
         health = client.get('/salud').json()
@@ -85,17 +88,29 @@ def test_startup_loads_configured_artifact(tmp_path, monkeypatch, pipeline, meta
 @pytest.mark.parametrize(('headers', 'expected_status'), [
     ({}, 401),
     ({'X-API-Key': 'otra-clave'}, 401),
-    ({'X-API-Key': 'clave-correcta'}, 200),
+    ({'X-API-Key': API_KEY}, 200),
 ])
-def test_api_key_required_when_configured(client, transaction, monkeypatch, headers, expected_status):
-    """Con FRAUDE_API_KEY definida, /predecir solo responde a quien envía esa key en el header X-API-Key."""
-    monkeypatch.setenv('FRAUDE_API_KEY', 'clave-correcta')
-    assert client.post('/predecir', json=transaction, headers=headers).status_code == expected_status
+def test_api_key_required(client, transaction, headers, expected_status):
+    """/predecir solo responde a quien envía la key de FRAUDE_API_KEY en el header X-API-Key."""
+    assert TestClient(app).post('/predecir', json=transaction, headers=headers).status_code == expected_status
 
 
-def test_health_and_docs_do_not_require_api_key(client, monkeypatch):
+def test_predict_rejected_if_api_key_is_missing(client, transaction, monkeypatch):
+    """Si FRAUDE_API_KEY desaparece con la API arriba, /predecir rechaza todo en lugar de quedar abierto."""
+    monkeypatch.delenv('FRAUDE_API_KEY')
+    assert client.post('/predecir', json=transaction).status_code == 401
+
+
+def test_startup_fails_without_api_key(monkeypatch):
+    """Sin FRAUDE_API_KEY la API no arranca."""
+    monkeypatch.delenv('FRAUDE_API_KEY', raising=False)
+    with pytest.raises(RuntimeError, match='FRAUDE_API_KEY'), TestClient(app):
+        pass
+
+
+def test_health_and_docs_do_not_require_api_key(client):
     """/salud y /docs quedan abiertos para poder verificar el servicio y probarlo desde el navegador."""
-    monkeypatch.setenv('FRAUDE_API_KEY', 'clave-correcta')
-    assert client.get('/salud').status_code == 200
-    assert client.get('/docs').status_code == 200
-    assert 'X-API-Key' in client.get('/openapi.json').text
+    anonymous = TestClient(app)
+    assert anonymous.get('/salud').status_code == 200
+    assert anonymous.get('/docs').status_code == 200
+    assert 'X-API-Key' in anonymous.get('/openapi.json').text
