@@ -27,7 +27,7 @@ MODEL_FEATURES = [
 ]
 MODEL_CATEGORICALS = categorical_columns(MODEL_FEATURES)
 
-# Hiperparámetros elegidos por Optuna y validados con folds nuevos en el notebook 04 (run validacion_lightgbm_tuneado)
+# Hiperparámetros elegidos por Optuna y validados con otra partición en el notebook 04 (run validacion_lightgbm_tuneado)
 LIGHTGBM_PARAMS = {
     'n_estimators': 481,
     'learning_rate': 0.019385512410777697,
@@ -39,7 +39,8 @@ LIGHTGBM_PARAMS = {
     'reg_alpha': 1.608317898022548,
     'reg_lambda': 3.025159385030446,
 }
-# Umbral teórico de la matriz de costos (aprobar si 0,25·(1−p) > p); coincide con el óptimo validado del pipeline
+# Umbral teórico de la matriz de costos (aprobar si 0,25·(1−p) > p). Es el óptimo con CV aleatoria, y un umbral elegido
+# solo con semanas previas no lo supera en la siguiente (notebook 06)
 THRESHOLD = 0.20
 
 

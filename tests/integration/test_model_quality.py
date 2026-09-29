@@ -12,8 +12,8 @@ from fraude_shipping.profit import compute_profit
 
 DATA_PATH = Path(__file__).resolve().parents[2] / 'data' / 'raw' / 'dataset.csv'
 TEST_START = '2020-04-15'
-# Hoy el modelo da 79,5% de la ganancia máxima y AUC 0,884 en la última semana (aprobar todo: 67,1%). Los pisos dejan
-# ~2 puntos de margen, más que la variación natural (±1,3), para fallar solo ante una regresión real
+# Hoy el modelo da 79,5% de la ganancia máxima y AUC 0,884 en la última semana (aprobar todo: 67,1%). La semana es
+# siempre la misma, así que no entra la variación entre semanas; ~2 puntos de margen fallan solo ante una regresión real
 MIN_PROFIT_PCT = 77.5
 MIN_GAIN_OVER_APPROVE_ALL = 10.0
 MIN_AUC = 0.87

@@ -32,8 +32,7 @@ PROMOTION_TOLERANCE = 0.5
 MODEL_DESCRIPTION = (
     'Pipeline productivo de prevención de fraude: construye las features (tasa y frecuencia de `j`, país agrupado, '
     'hora), estima la probabilidad de fraude con LightGBM tuneado y decide aprobar o rechazar con el umbral teórico '
-    'de la matriz de costos, 0,20 (+25% del monto por legítima aprobada, -100% por fraude aprobado), que coincide '
-    'con el óptimo validado.\n\n'
+    'de la matriz de costos, 0,20 (+25% del monto por legítima aprobada, -100% por fraude aprobado).\n\n'
     'Uso: `predict` devuelve `probabilidad_fraude` y `decision`; con `params={"metodo": "predict_proba"}` '
     'devuelve solo la probabilidad. El alias `champion` apunta a la versión en producción.'
 )
@@ -150,7 +149,7 @@ def _document_version(registered_version, pipeline, training_rows, validation):
             'run_validacion': validation.info.run_id,
         })
         description += (
-            f" Validación con 5 folds nuevos (run {validation.info.run_id}): "
+            f" Validación con 5 folds (run {validation.info.run_id}): "
             f"{format_number(metrics['ganancia_pct_maxima_media'], 1)}% "
             f"± {format_number(metrics['ganancia_pct_maxima_desvio'], 1)} de la ganancia máxima, "
             f"AUC-ROC {format_number(metrics['auc_roc_media'], 3)} y AUC-PR {format_number(metrics['auc_pr_media'], 3)}."
