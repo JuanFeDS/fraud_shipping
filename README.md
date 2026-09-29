@@ -95,14 +95,17 @@ fraude_shipping/
 
 **Flujo de entrenamiento a producción**
 
-```
-dataset.csv ──► validate_pipeline.py ──► run de validación ─┐
-            └─► train.py ──────────────► MLflow registry ◄──┘  (versión documentada + alias champion)
-                                              │
-                           download_model.py ◄┘
-                                   │
-                                   ▼
-                       imagen de la API (Cloud Build) ──► Cloud Run
+```mermaid
+flowchart LR
+    data[(dataset.csv)] --> val[validate_pipeline.py]
+    data --> train[train.py]
+    val --> run[Run de validación<br/>en MLflow]
+    train --> reg[(MLflow registry)]
+    run -. gate de promoción .-> reg
+    reg -->|alias champion| dl[download_model.py]
+    dl --> build[Imagen de la API<br/>Cloud Build]
+    build --> api[API en Cloud Run]
+    api --> logs[Cloud Logging<br/>una línea por decisión]
 ```
 
 `production/` no depende de MLflow, CatBoost ni XGBoost: la API solo carga LightGBM y el pipeline. El modelo viaja dentro de la imagen, así cada imagen es inmutable y reproducible.
