@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "fraude-shipping"
 version = "0.1.0"
-description = ""
+description = "Modelo de prevención de fraude orientado a ganancia: pipeline, API y MLflow"
 authors = ["JuanFe <jmartinezbernal02@gmail.com>"]
 readme = "README.md"
 packages = [{ include = "fraude_shipping", from = "src" }]
