@@ -14,6 +14,7 @@ import mlflow.data
 import mlflow.pyfunc
 import pandas as pd
 from mlflow import MlflowClient
+from mlflow.exceptions import MlflowException
 from mlflow.models import infer_signature
 
 from fraude_shipping.production.pipeline import FraudPipeline
@@ -26,11 +27,13 @@ PREDICTION_METHODS = ('predict', 'predict_proba')
 # Tag que MLflow muestra como descripción en la UI de experimentos y runs
 DESCRIPTION_TAG = 'mlflow.note.content'
 VALIDATION_RUN_NAME = 'validacion_pipeline'
+# La ganancia varía ~±1 punto entre folds: una versión nueva puede quedar hasta medio punto debajo del champion
+PROMOTION_TOLERANCE = 0.5
 MODEL_DESCRIPTION = (
-    'Pipeline productivo de prevención de fraude: construye las features del conjunto `candidatas` '
-    '(tasa y frecuencia de `j`, país agrupado, perfil `o`/`n`/`p`, hora), estima la probabilidad de fraude '
-    'con LightGBM tuneado y decide aprobar o rechazar con un umbral que maximiza la ganancia '
-    '(+25% del monto por legítima aprobada, -100% por fraude aprobado).\n\n'
+    'Pipeline productivo de prevención de fraude: construye las features (tasa y frecuencia de `j`, país agrupado, '
+    'hora), estima la probabilidad de fraude con LightGBM tuneado y decide aprobar o rechazar con el umbral teórico '
+    'de la matriz de costos, 0,20 (+25% del monto por legítima aprobada, -100% por fraude aprobado), que coincide '
+    'con el óptimo validado.\n\n'
     'Uso: `predict` devuelve `probabilidad_fraude` y `decision`; con `params={"metodo": "predict_proba"}` '
     'devuelve solo la probabilidad. El alias `champion` apunta a la versión en producción.'
 )
@@ -91,13 +94,42 @@ class FraudMlflowModel(mlflow.pyfunc.PythonModel):
         return self.pipeline.predict(model_input)
 
 
-def find_latest_validation():
-    """Último run de validación del pipeline en el experimento activo, o None si todavía no se validó."""
+def find_validation(params, data):
+    """Último run de validación con los mismos parámetros (umbral incluido) y el mismo dataset, o None si no hay."""
+    digest = mlflow.data.from_pandas(data).digest
+    expected = {key: str(value) for key, value in params.items()}
     runs = mlflow.search_runs(
         filter_string=f"attributes.run_name = '{VALIDATION_RUN_NAME}'", order_by=['attributes.start_time DESC'],
-        max_results=1, output_format='list',
+        output_format='list',
     )
-    return runs[0] if runs else None
+    for run in runs:
+        same_data = digest in {dataset_input.dataset.digest for dataset_input in run.inputs.dataset_inputs}
+        if same_data and all(run.data.params.get(key) == value for key, value in expected.items()):
+            return run
+    return None
+
+
+def champion_profit():
+    """Ganancia validada del champion vigente, o None si todavía no hay champion o no quedó documentada."""
+    try:
+        champion = MlflowClient().get_model_version_by_alias(REGISTERED_MODEL_NAME, PRODUCTION_ALIAS)
+    except MlflowException:
+        return None
+    profit = champion.tags.get('ganancia_pct_maxima')
+    return None if profit is None else float(profit)
+
+
+def should_promote(validation):
+    """Gate de promoción: exige una validación del mismo modelo y que no empeore al champion más allá del ruido."""
+    if validation is None:
+        return False, 'no hay una validación con los mismos parámetros, umbral y datos'
+    profit = validation.data.metrics['ganancia_pct_maxima_media']
+    current = champion_profit()
+    if current is None:
+        return True, f'ganancia validada {profit:.2f}% y sin champion previo'
+    if profit < current - PROMOTION_TOLERANCE:
+        return False, f'ganancia validada {profit:.2f}% frente a {current:.2f}% del champion'
+    return True, f'ganancia validada {profit:.2f}% frente a {current:.2f}% del champion'
 
 
 def _document_version(registered_version, pipeline, training_rows, validation):
@@ -128,8 +160,8 @@ def _document_version(registered_version, pipeline, training_rows, validation):
         client.set_model_version_tag(REGISTERED_MODEL_NAME, registered_version, key, str(value))
 
 
-def register_pipeline(pipeline_path, training_data, validation=None):
-    """Registra el pipeline como nueva versión documentada del modelo y le asigna el alias de producción."""
+def register_pipeline(pipeline_path, training_data, validation=None, promote=True):
+    """Registra el pipeline como nueva versión documentada y, si se promueve, le asigna el alias de producción."""
     model_input = training_data.drop(columns='fraude', errors='ignore')
     pipeline = FraudPipeline.load(pipeline_path)
     # La firma se infiere con todo train: con pocas filas, columnas que admiten nulos quedarían como obligatorias
@@ -145,8 +177,10 @@ def register_pipeline(pipeline_path, training_data, validation=None):
         registered_model_name=REGISTERED_MODEL_NAME,
     )
     registered_version = model_info.registered_model_version
-    MlflowClient().set_registered_model_alias(REGISTERED_MODEL_NAME, PRODUCTION_ALIAS, registered_version)
+    # Se documenta antes de promover: el gate de la próxima versión lee la ganancia del champion de sus tags
     _document_version(registered_version, pipeline, len(model_input), validation)
+    if promote:
+        MlflowClient().set_registered_model_alias(REGISTERED_MODEL_NAME, PRODUCTION_ALIAS, registered_version)
     return registered_version
 
 

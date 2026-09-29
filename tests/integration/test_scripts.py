@@ -86,3 +86,11 @@ def test_train_and_validate_log_to_mlflow(monkeypatch, capsys, paths):
     assert downloaded.exists()
     assert downloaded.with_suffix('.json').exists()
     assert 'v1' in capsys.readouterr().out
+
+
+@pytest.mark.usefixtures('temp_mlflow')
+def test_train_without_validation_is_not_promoted(monkeypatch, capsys, paths):
+    """Sin una validación del mismo modelo y datos, train.py registra la versión pero no la pasa a producción."""
+    _run_script(monkeypatch, 'train.py', '--data', paths['labeled'], '--model', paths['model'], '--mlflow')
+    assert 'sin alias: no supera el gate de promoción' in capsys.readouterr().out
+    assert not MlflowClient().get_registered_model(REGISTERED_MODEL_NAME).aliases

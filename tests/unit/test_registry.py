@@ -13,14 +13,28 @@ from fraude_shipping.registry import (
     REGISTERED_MODEL_NAME,
     VALIDATION_RUN_NAME,
     download_pipeline,
-    find_latest_validation,
+    find_validation,
     format_number,
     log_dataset,
     register_pipeline,
     setup_mlflow,
+    should_promote,
 )
 
 PRODUCTION_URI = f'models:/{REGISTERED_MODEL_NAME}@{PRODUCTION_ALIAS}'
+PARAMS = {'n_estimators': 50, 'umbral': 0.2}
+
+
+def _log_validation(data, params, profit=78.88):
+    """Run de validación como el de validate_pipeline.py: parámetros, dataset y métricas resumidas."""
+    with mlflow.start_run(run_name=VALIDATION_RUN_NAME) as run:
+        mlflow.log_params(params)
+        log_dataset(data, 'dataset', 'training')
+        mlflow.log_metrics({
+            'ganancia_pct_maxima_media': profit, 'ganancia_pct_maxima_desvio': 1.3, 'auc_roc_media': 0.889,
+            'auc_pr_media': 0.474,
+        })
+    return run.info.run_id
 
 
 def test_setup_mlflow_creates_and_reuses_experiment(temp_mlflow):
@@ -139,15 +153,11 @@ def test_registered_version_is_documented(tmp_path, pipeline, train_data):
     path = tmp_path / 'pipeline.joblib'
     pipeline.save(path)
     setup_mlflow('prueba')
-    assert find_latest_validation() is None
 
     with mlflow.start_run():
         without_validation = register_pipeline(path, train_data)
-    with mlflow.start_run(run_name=VALIDATION_RUN_NAME):
-        mlflow.log_metrics({
-            'ganancia_pct_maxima_media': 78.88, 'ganancia_pct_maxima_desvio': 1.5, 'auc_roc_media': 0.89, 'auc_pr_media': 0.474,
-        })
-    validation = find_latest_validation()
+    _log_validation(train_data, PARAMS)
+    validation = find_validation(PARAMS, train_data)
     with mlflow.start_run():
         with_validation = register_pipeline(path, train_data, validation)
 
@@ -161,6 +171,48 @@ def test_registered_version_is_documented(tmp_path, pipeline, train_data):
     assert '78,9%' in second.description
     assert second.tags['run_validacion'] == validation.info.run_id
     assert second.tags['ganancia_pct_maxima'] == '78.88'
+
+
+@pytest.mark.usefixtures('temp_mlflow')
+def test_find_validation_requires_same_params_and_data(train_data, data):
+    """Solo sirve una validación hecha con los mismos parámetros, el mismo umbral y el mismo dataset."""
+    setup_mlflow('prueba')
+    assert find_validation(PARAMS, train_data) is None
+
+    matching = _log_validation(train_data, PARAMS)
+    _log_validation(train_data, {**PARAMS, 'umbral': 0.15})
+    other_data = _log_validation(data, PARAMS)
+
+    assert find_validation(PARAMS, train_data).info.run_id == matching
+    assert find_validation(PARAMS, data).info.run_id == other_data
+    assert find_validation({**PARAMS, 'umbral': 0.3}, train_data) is None
+
+
+@pytest.mark.usefixtures('temp_mlflow')
+def test_promotion_gate(tmp_path, pipeline, train_data):
+    """Sin validación no se promueve; sin champion, sí; con champion, solo si no empeora más allá de la tolerancia."""
+    path = tmp_path / 'pipeline.joblib'
+    pipeline.save(path)
+    setup_mlflow('prueba')
+    assert should_promote(None)[0] is False
+
+    _log_validation(train_data, PARAMS, profit=78.88)
+    first_validation = find_validation(PARAMS, train_data)
+    assert should_promote(first_validation)[0] is True
+    with mlflow.start_run():
+        champion = register_pipeline(path, train_data, first_validation)
+
+    _log_validation(train_data, PARAMS, profit=78.5)
+    assert should_promote(find_validation(PARAMS, train_data))[0] is True
+    _log_validation(train_data, PARAMS, profit=78.0)
+    worse = find_validation(PARAMS, train_data)
+    promote, reason = should_promote(worse)
+    assert promote is False
+    assert '78.88%' in reason
+
+    with mlflow.start_run():
+        register_pipeline(path, train_data, worse, promote=promote)
+    assert MlflowClient().get_model_version_by_alias(REGISTERED_MODEL_NAME, PRODUCTION_ALIAS).version == champion
 
 
 @pytest.mark.parametrize(('value', 'decimals', 'expected'), [
