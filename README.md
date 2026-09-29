@@ -69,7 +69,7 @@ Los reportes ejecutivos de cada etapa están en [`docs/reports/`](docs/reports/)
 | ⚡ API online | FastAPI con validación del input, documentación en `/docs` y API key |
 | 🧪 MLflow | Tracking de los ~70 experimentos, datasets, descripciones por run y model registry con alias `champion` |
 | ☁️ Despliegue | MLflow y la API en Cloud Run; metadatos en Supabase (Postgres) y artefactos en Cloud Storage |
-| ✅ Tests | 82 tests unitarios y de integración, con **100% de cobertura** y un piso de 80% configurado |
+| ✅ Tests | 89 tests unitarios y de integración, con **100% de cobertura** y un piso de 80% configurado. Incluyen un test de calidad del modelo: entrenado con el pasado, en la última semana debe superar el 77,5% de la ganancia máxima y un AUC de 0,87 |
 
 ---
 
