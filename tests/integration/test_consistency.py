@@ -47,7 +47,10 @@ def test_api_matches_batch(real_pipeline, real_data, monkeypatch):
     sample = test.head(20)
     expected = real_pipeline.predict(sample)
     for (_, row), (_, prediction) in zip(sample.iterrows(), expected.iterrows()):
-        response = client.post('/predecir', json=json.loads(row.to_json(date_format='iso')))
+        transaction = json.loads(row.to_json(date_format='iso'))
+        # El dataset está en la zona horaria de referencia (UTC−3), así que la API la recibe con ese offset
+        transaction['fecha'] += '-03:00'
+        response = client.post('/predecir', json=transaction)
         assert response.status_code == 200
         assert response.json()['probabilidad_fraude'] == pytest.approx(prediction['probabilidad_fraude'])
         assert response.json()['decision'] == prediction['decision']

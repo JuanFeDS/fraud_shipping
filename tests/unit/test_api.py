@@ -2,6 +2,7 @@
 
 import json
 
+import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
@@ -21,8 +22,10 @@ def fixture_client(pipeline, monkeypatch):
 
 @pytest.fixture(name='transaction')
 def fixture_transaction(new_data):
-    """Una transacción válida como la enviaría un cliente: nulos como null y fecha en ISO 8601."""
-    return json.loads(new_data.iloc[0].to_json(date_format='iso'))
+    """Una transacción válida como la enviaría un cliente: nulos como null y fecha en ISO 8601 con zona horaria."""
+    transaction = json.loads(new_data.iloc[0].to_json(date_format='iso'))
+    transaction['fecha'] += '-03:00'
+    return transaction
 
 
 def test_health(client, pipeline):
@@ -60,6 +63,20 @@ def test_predict_accepts_missing_optional_fields(client, transaction):
 def test_invalid_input_is_rejected(client, transaction, change):
     """Un valor fuera de dominio se rechaza con 422 antes de llegar al modelo."""
     assert client.post('/predecir', json={**transaction, **change}).status_code == 422
+
+
+def test_fecha_requires_timezone(client, transaction):
+    """Una fecha sin zona horaria es ambigua entre países: se rechaza antes de calcular la hora del día."""
+    naive = {**transaction, 'fecha': transaction['fecha'].removesuffix('-03:00')}
+    assert client.post('/predecir', json=naive).status_code == 422
+
+
+def test_same_instant_in_any_timezone_gives_same_prediction(client, transaction):
+    """La fecha se convierte a la zona del dataset: el mismo instante en UTC da la misma probabilidad."""
+    in_utc = pd.Timestamp(transaction['fecha']).tz_convert('UTC').isoformat()
+    local = client.post('/predecir', json=transaction).json()
+    utc = client.post('/predecir', json={**transaction, 'fecha': in_utc}).json()
+    assert utc == local
 
 
 @pytest.mark.parametrize('field', ['j', 'score', 'monto', 'fecha'])

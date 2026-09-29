@@ -3,7 +3,7 @@
 import json
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import timedelta, timezone
 from pathlib import Path
 from secrets import compare_digest
 from typing import Literal
@@ -11,11 +11,13 @@ from typing import Literal
 import pandas as pd
 from fastapi import Depends, FastAPI, HTTPException, Request, Security
 from fastapi.security import APIKeyHeader
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from fraude_shipping.production.pipeline import MODEL_PATH, FraudPipeline
 
 API_KEY_HEADER = APIKeyHeader(name='X-API-Key', auto_error=False)
+# Zona horaria que se supone para la fecha del dataset (Brasil y Argentina, UTC−3 en 2020): `hora` se aprendió así
+DATASET_TIMEZONE = timezone(timedelta(hours=-3))
 
 
 class Transaction(BaseModel):
@@ -36,7 +38,7 @@ class Transaction(BaseModel):
     n: int = Field(ge=0, le=1)
     o: Literal['Y', 'N'] | None = None
     p: Literal['Y', 'N']
-    fecha: datetime
+    fecha: AwareDatetime = Field(description='Fecha y hora con zona horaria, por ejemplo 2020-04-15T02:30:00-03:00')
     monto: float = Field(gt=0)
     score: int = Field(ge=0, le=100)
 
@@ -89,7 +91,10 @@ def health(request: Request):
 def predict(transaction: Transaction, request: Request):
     """Probabilidad de fraude y decisión para una transacción."""
     pipeline = request.app.state.pipeline
-    result = pipeline.predict(pd.DataFrame([transaction.model_dump()])).iloc[0]
+    row = transaction.model_dump()
+    # La misma transacción da la misma hora del día sin importar la zona horaria en la que la envíe el cliente
+    row['fecha'] = transaction.fecha.astimezone(DATASET_TIMEZONE).replace(tzinfo=None)
+    result = pipeline.predict(pd.DataFrame([row])).iloc[0]
     return Prediction(
         probabilidad_fraude=result['probabilidad_fraude'], decision=result['decision'], umbral=pipeline.threshold
     )
