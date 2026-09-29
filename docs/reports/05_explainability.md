@@ -66,7 +66,7 @@ El modelo falla cuando **un fraude tiene score medio** o cuando **una legítima 
 ## 🧭 Conclusiones
 
 - El modelo aprendió relaciones con sentido de negocio y consistentes con la exploración: la U de `score`, el riesgo de la madrugada, más riesgo con más monto y con `o` informado.
-- **`score` es la pieza crítica**: es la variable más valiosa en ganancia y la raíz de los errores más caros. Que esté disponible al momento de decidir es el supuesto más importante del modelo, aunque el baseline mostró que sin ella se pierden solo ~1,3 puntos.
+- **`score` es la pieza crítica**: es la variable más valiosa en ganancia y la raíz de los errores más caros. Que esté disponible al momento de decidir es el supuesto más importante del modelo, aunque sin ella el modelo final da 77,0%, solo 1,9 puntos menos (notebook 07).
 - **Quitar `perfil_onp` no hizo perder información**: `o` la absorbió.
 - Para decisiones de negocio conviene la **importancia por permutación en ganancia**, idealmente sobre varios folds, no solo la de SHAP.
 

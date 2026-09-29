@@ -66,7 +66,7 @@ Al ranking se le sumó una **variable aleatoria** como piso de ruido, y quedó e
 
 | Feature | Por qué |
 |---|---|
-| 🧩 `perfil_onp` | La más fuerte y no se reduce a una sola variable original |
+| 🧩 `perfil_onp` | La más fuerte y no se reduce a una sola variable original (en el notebook 04 no aportó dentro del modelo y se quitó) |
 | 🕐 `hora` | Señal clara e independiente del resto |
 | 🔤 `j_tasa_fraude` y `j_frecuencia` | Reemplazan a la `j` cruda sin permitir que el modelo memorice categorías |
 | 🌎 `g_agrupado` | Misma señal que `g`, pero evita aprender tasas de países con una o dos transacciones |

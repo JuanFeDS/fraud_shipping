@@ -75,4 +75,4 @@ Sin `score`, el modelo pierde solo **1,3 puntos** y sigue superando ampliamente 
 
 - Se asume que todas las variables, incluido `score`, están **disponibles al momento de decidir**. El análisis de leakage de la exploración no encontró señales de que `score` reproduzca la etiqueta.
 - El umbral se elige sobre las mismas predicciones out-of-fold con las que se evalúa. Al ser un único parámetro elegido sobre 150.000 transacciones, el sesgo optimista es mínimo.
-- La proporción de fraude del dataset (5% exacto) sugiere un muestreo. Si la tasa real en producción es distinta, habrá que revisar el umbral.
+- La proporción de fraude del dataset (5% exacto) sugiere un muestreo. Si la tasa real en producción es distinta, habrá que corregir o recalibrar las probabilidades (notebook 06).

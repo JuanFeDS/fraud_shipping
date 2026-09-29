@@ -70,10 +70,10 @@ Superar al baseline (**77,7% de la ganancia máxima**) con cambios que se sosten
 - La regresión logística llega casi al baseline de LightGBM: con buenas features, un modelo lineal ya captura la mayor parte de la señal.
 - Se elige **LightGBM** por ganancia, velocidad y facilidad para tunear.
 
-### 4. 🎛️ El tuning aporta una mejora real pero modesta
+### 4. 🎛️ El tuning aporta una mejora modesta, que no se distingue de cero
 - Sobre los folds de la búsqueda, la mejor prueba llega a 79,7% (+0,7 puntos). Pero **39 de las 50 pruebas superan el 79%**: hay una zona amplia de configuraciones equivalentes, no un óptimo puntual.
 - Las mejores configuraciones tienen una **tasa de aprendizaje baja** (~0,02) con más árboles (~480), **hojas grandes** (`num_leaves` ~170) que exigen **muchos casos por hoja** (`min_child_samples` ~260). Son árboles complejos que aprenden despacio, sin hojas tan chicas que permitan memorizar.
-- **Con la segunda partición, la mejora baja a +0,4 puntos** (78,9% frente a 78,5%), mejor en 4 de 5 folds. Cerca de la mitad de la mejora de la búsqueda era optimismo por elegir y evaluar con los mismos folds. Que 0,4 puntos cuenten aunque la ganancia varíe ±1 entre folds se debe a que la comparación es **pareada**, fold a fold.
+- **Con la segunda partición, la mejora baja a +0,4 puntos** (78,9% frente a 78,5%), mejor en 4 de 5 folds. Cerca de la mitad de la mejora de la búsqueda era optimismo por elegir y evaluar con los mismos folds. En el modelo final (sin `perfil_onp`, umbral 0,20), la mejora es la misma, +0,4, pero con **IC95 de −0,5 a +1,3** y mejor en 3 de 5 folds: no se distingue de cero (notebook 07).
 - La partición en sí mueve el resultado ~0,5 puntos: las cifras de ganancia deben leerse con un margen de **±1 punto**.
 
 ### 5. 🎚️ Con `perfil_onp`, el umbral óptimo bajaba a 0,15 por la calibración en montos altos
