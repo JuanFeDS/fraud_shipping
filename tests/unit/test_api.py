@@ -1,12 +1,13 @@
 """API de scoring: endpoints, validación del input y carga del artefacto al iniciar."""
 
 import json
+import logging
 
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from fraude_shipping.production.api import app
+from fraude_shipping.production.api import DECISION_LOGGER, app
 
 API_KEY = 'clave-correcta'
 
@@ -45,6 +46,26 @@ def test_predict_matches_pipeline(client, pipeline, new_data, transaction):
     assert response.json()['umbral'] == pipeline.threshold
 
 
+def test_each_decision_is_logged(client, transaction, caplog):
+    """Cada decisión deja una línea JSON con su id, probabilidad, decisión, versión y latencia, sin las variables."""
+    DECISION_LOGGER.addHandler(caplog.handler)
+    try:
+        response = client.post('/predecir', json=transaction).json()
+    finally:
+        DECISION_LOGGER.removeHandler(caplog.handler)
+    record = json.loads(caplog.records[-1].getMessage())
+    assert caplog.records[-1].levelno == logging.INFO
+    assert {key: record[key] for key in response} == response
+    assert record['evento'] == 'decision' and record['latencia_ms'] >= 0
+    assert 'monto' not in record and 'score' not in record
+
+
+def test_decision_ids_are_unique(client, transaction):
+    """Cada respuesta trae un id distinto, para unirla después con su etiqueta."""
+    ids = {client.post('/predecir', json=transaction).json()['id_decision'] for _ in range(3)}
+    assert len(ids) == 3
+
+
 def test_predict_accepts_missing_optional_fields(client, transaction):
     """Las variables que admiten nulo pueden no enviarse."""
     required = {field: value for field, value in transaction.items() if field not in ('b', 'c', 'd', 'f', 'g', 'l', 'm', 'o')}
@@ -76,7 +97,8 @@ def test_same_instant_in_any_timezone_gives_same_prediction(client, transaction)
     in_utc = pd.Timestamp(transaction['fecha']).tz_convert('UTC').isoformat()
     local = client.post('/predecir', json=transaction).json()
     utc = client.post('/predecir', json={**transaction, 'fecha': in_utc}).json()
-    assert utc == local
+    # El id cambia en cada request; lo que tiene que coincidir es la predicción
+    assert {**utc, 'id_decision': None} == {**local, 'id_decision': None}
 
 
 @pytest.mark.parametrize('field', ['j', 'score', 'monto', 'fecha'])
