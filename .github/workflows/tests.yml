@@ -1,0 +1,30 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Instalar Poetry
+        run: pipx install poetry==1.8.2
+
+      - name: Instalar dependencias
+        run: poetry install --no-interaction
+
+      # La imagen de la API instala deploy/api/requirements.txt: tiene que salir del lock, no mantenerse a mano
+      - name: Verificar que el requirements de la API coincide con el lock
+        run: |
+          poetry export --only main --without-hashes -f requirements.txt -o /tmp/requirements.txt
+          diff --strip-trailing-cr deploy/api/requirements.txt /tmp/requirements.txt
+
+      - name: Tests con cobertura
+        run: poetry run pytest
