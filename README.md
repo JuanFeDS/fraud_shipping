@@ -68,10 +68,10 @@ Los reportes ejecutivos de cada etapa están en [`docs/reports/`](docs/reports/)
 | 📓 Notebooks | Exploración, baseline, feature engineering, experimentación, explicabilidad (SHAP), umbral y recalibración en el tiempo, e incertidumbre y política de tres zonas, cada uno con sus hallazgos |
 | 🛤️ Pipeline productivo | `FraudPipeline`: ajusta las features con estado (tasa y frecuencia de `j`, países frecuentes) solo con train y predice sin mirar el lote, como ocurriría en producción |
 | 📦 Inferencia batch | `scripts/predict.py`: agrega probabilidad y decisión a un CSV |
-| ⚡ API online | FastAPI con validación del input, documentación en `/docs` y API key |
+| ⚡ API online | FastAPI con validación del input, documentación en `/docs`, API key y registro de cada decisión |
 | 🧪 MLflow | Tracking de los ~70 experimentos, datasets, descripciones por run y model registry con alias `champion` |
 | ☁️ Despliegue | MLflow y la API en Cloud Run; metadatos en Supabase (Postgres) y artefactos en Cloud Storage |
-| ✅ Tests | 89 tests unitarios y de integración, con **100% de cobertura** y un piso de 80% configurado. Incluyen un test de calidad del modelo: entrenado con el pasado, en la última semana debe superar el 77,5% de la ganancia máxima y un AUC de 0,87 |
+| ✅ Tests | 91 tests unitarios y de integración, con **100% de cobertura** y un piso de 80% configurado. Incluyen un test de calidad del modelo: entrenado con el pasado, en la última semana debe superar el 77,5% de la ganancia máxima y un AUC de 0,87 |
 
 ---
 
@@ -144,6 +144,8 @@ FRAUDE_API_KEY=<una-clave> poetry run uvicorn fraude_shipping.production.api:app
 Documentación interactiva en http://127.0.0.1:8000/docs. La API no arranca sin `FRAUDE_API_KEY`: si la variable se pierde en un despliegue, falla cerrada en lugar de quedar abierta.
 
 `fecha` se exige **con zona horaria** (por ejemplo, `2020-04-15T02:30:00-03:00`) y se convierte a UTC−3 antes de calcular la hora del día. Es la zona que se supone para el dataset (casi todo Brasil y Argentina), y hay que confirmarla con los dueños de los datos. En Cloud Run (1 vCPU), el servidor decide en **20 ms (p50) y 28 ms (p99)**, medido con 300 requests secuenciales.
+
+Cada respuesta trae un `id_decision`, y cada decisión se escribe como una línea JSON en stdout (id, probabilidad, decisión, umbral, versión del modelo y latencia, sin las variables de la transacción). En Cloud Run queda en Cloud Logging, y el id permite unir la decisión con su etiqueta cuando madure. La imagen corre sin privilegios de root.
 
 ### Variables de entorno
 
