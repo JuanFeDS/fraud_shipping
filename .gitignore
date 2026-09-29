@@ -6,3 +6,8 @@ data/interim/
 models/
 data/predictions/
 .coverage
+sessions/
+# Borradores y notas de trabajo que no forman parte de la entrega
+docs/recruiter_evaluation.md
+docs/report.md
+docs/challenge_answers.md
