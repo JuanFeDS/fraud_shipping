@@ -7,7 +7,7 @@ import mlflow
 import numpy as np
 import pandas as pd
 
-from fraude_shipping.experimentation.validation import ValidationResult, compute_fold_metrics
+from fraude_shipping.experimentation.validation import ValidationResult, fold_metrics_table
 from fraude_shipping.features import load_data, make_folds
 from fraude_shipping.production.pipeline import LIGHTGBM_PARAMS, THRESHOLD, FraudPipeline
 from fraude_shipping.profit import optimal_threshold
@@ -31,17 +31,8 @@ def validate(data, folds):
         pipelines.append(pipeline)
         print(f'Fold {number}/{len(folds)} listo')
 
-    fold_metrics = pd.DataFrame([
-        compute_fold_metrics(
-            data['fraude'].iloc[validation_indices].to_numpy(),
-            data['monto'].iloc[validation_indices].to_numpy(),
-            oof_probability[validation_indices],
-            THRESHOLD,
-        )
-        for _, validation_indices in folds
-    ])
     threshold = optimal_threshold(data['fraude'], data['monto'], oof_probability)
-    return ValidationResult(oof_probability, threshold, fold_metrics, pipelines)
+    return ValidationResult(oof_probability, threshold, fold_metrics_table(data, oof_probability, folds, THRESHOLD), pipelines)
 
 
 def log_validation(data, data_path, result):
@@ -59,7 +50,7 @@ def log_validation(data, data_path, result):
         mlflow.set_tags({
             'etapa': 'validacion_pipeline', 'modelo': 'lightgbm', 'decision': 'elegido',
             'conjunto_features': 'candidatas_sin_perfil_onp',
-            'validacion': 'folds_nuevos', 'origen': 'scripts/validate_pipeline.py', DESCRIPTION_TAG: description,
+            'validacion': 'segunda_particion', 'origen': 'scripts/validate_pipeline.py', DESCRIPTION_TAG: description,
         })
         mlflow.log_params({**LIGHTGBM_PARAMS, 'umbral': THRESHOLD, 'semilla_folds': VALIDATION_SEED})
         log_dataset(data, 'dataset', 'training', source=data_path)

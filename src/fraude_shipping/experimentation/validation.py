@@ -54,7 +54,20 @@ def compute_fold_metrics(fraud, amount, probability, threshold):
     }
 
 
-def cross_validate(data, features, model_name, params=None, rate_columns=(), folds=None, weights=None):
+def fold_metrics_table(data, oof_probability, folds, threshold):
+    """Métricas de cada fold de validación con las predicciones out-of-fold y el umbral dado."""
+    return pd.DataFrame([
+        compute_fold_metrics(
+            data['fraude'].iloc[validation_indices].to_numpy(),
+            data['monto'].iloc[validation_indices].to_numpy(),
+            oof_probability[validation_indices],
+            threshold,
+        )
+        for _, validation_indices in folds
+    ])
+
+
+def cross_validate(data, features, model_name, params=None, *, rate_columns=(), folds=None, weights=None):
     """Entrena el modelo en cada fold (con pesos por fila si se indican), junta las predicciones out-of-fold y elige el umbral que maximiza la ganancia."""
     model_columns = [*features, *(f'{column}_tasa_fraude' for column in rate_columns)]
     data = prepare_categoricals(data, [*features, *rate_columns])
@@ -71,13 +84,4 @@ def cross_validate(data, features, model_name, params=None, rate_columns=(), fol
         models.append(model)
 
     threshold = optimal_threshold(data['fraude'], data['monto'], oof_probability)
-    fold_metrics = pd.DataFrame([
-        compute_fold_metrics(
-            data['fraude'].iloc[validation_indices].to_numpy(),
-            data['monto'].iloc[validation_indices].to_numpy(),
-            oof_probability[validation_indices],
-            threshold,
-        )
-        for _, validation_indices in folds
-    ])
-    return ValidationResult(oof_probability, threshold, fold_metrics, models)
+    return ValidationResult(oof_probability, threshold, fold_metrics_table(data, oof_probability, folds, threshold), models)

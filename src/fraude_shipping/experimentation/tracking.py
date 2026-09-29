@@ -17,12 +17,12 @@ def _plot_profit_curve(data, result, run_name):
 
 
 def run_experiment(
-    data, run_name, features, model_name, params=None, rate_columns=(), tags=None, folds=None,
+    data, run_name, features, model_name, params=None, *, rate_columns=(), tags=None, folds=None,
     nested=False, weights=None, description=None,
 ):
     """Corre la validación cruzada de una configuración y registra parámetros, métricas y artefactos en MLflow."""
     params = params or {}
-    result = cross_validate(data, features, model_name, params, rate_columns, folds, weights)
+    result = cross_validate(data, features, model_name, params, rate_columns=rate_columns, folds=folds, weights=weights)
     with mlflow.start_run(run_name=run_name, nested=nested):
         mlflow.set_tags({'modelo': model_name, **(tags or {})})
         if description:

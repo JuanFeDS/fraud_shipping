@@ -107,7 +107,8 @@ def test_startup_loads_configured_artifact(tmp_path, monkeypatch, pipeline, meta
     ({'X-API-Key': 'otra-clave'}, 401),
     ({'X-API-Key': API_KEY}, 200),
 ])
-def test_api_key_required(client, transaction, headers, expected_status):
+@pytest.mark.usefixtures('client')
+def test_api_key_required(transaction, headers, expected_status):
     """/predecir solo responde a quien envía la key de FRAUDE_API_KEY en el header X-API-Key."""
     assert TestClient(app).post('/predecir', json=transaction, headers=headers).status_code == expected_status
 
@@ -125,7 +126,8 @@ def test_startup_fails_without_api_key(monkeypatch):
         pass
 
 
-def test_health_and_docs_do_not_require_api_key(client):
+@pytest.mark.usefixtures('client')
+def test_health_and_docs_do_not_require_api_key():
     """/salud y /docs quedan abiertos para poder verificar el servicio y probarlo desde el navegador."""
     anonymous = TestClient(app)
     assert anonymous.get('/salud').status_code == 200

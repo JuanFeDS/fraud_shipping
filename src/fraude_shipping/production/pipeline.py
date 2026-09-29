@@ -47,7 +47,7 @@ THRESHOLD = 0.20
 class FraudPipeline:
     """Transforma transacciones crudas en features, estima la probabilidad de fraude y decide aprobar o rechazar."""
 
-    # Todo lo que depende de otras transacciones (tasa y frecuencia de j, países frecuentes, categorías) se aprende
+    # Lo que depende de otras transacciones (tasa y frecuencia de j, países frecuentes, categorías) se aprende
     # en `fit`, así que `transform` nunca usa información de los datos a predecir
 
     def __init__(self, params=None, threshold=THRESHOLD):
