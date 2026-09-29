@@ -11,10 +11,10 @@
   <img src="https://img.shields.io/badge/FastAPI-0.141-009688?logo=fastapi&logoColor=white&style=flat-square" />
   <img src="https://img.shields.io/badge/Cloud_Run-GCP-4285F4?logo=googlecloud&logoColor=white&style=flat-square" />
   <img src="https://img.shields.io/badge/Supabase-Postgres-3ECF8E?logo=supabase&logoColor=white&style=flat-square" />
-  <img src="https://img.shields.io/badge/coverage-100%25-brightgreen?style=flat-square" />
+  <img src="https://github.com/JuanFeDS/proyecto/actions/workflows/tests.yml/badge.svg" />
 </p>
 
-Modelo de machine learning que decide si aprobar o rechazar cada transacción para **maximizar la ganancia del negocio**, no solo para detectar fraudes: cada legítima aprobada deja el 25% de su monto y cada fraude aprobado pierde el 100%. Incluye el análisis completo en notebooks, un pipeline productivo con inferencia batch y API, experimentos y model registry en MLflow, y el despliegue en Google Cloud Run.
+Modelo de machine learning que predice la probabilidad de fraude de cada transacción y decide aprobarla o rechazarla para **maximizar la ganancia del negocio**: cada legítima aprobada deja el 25% de su monto y cada fraude aprobado pierde el 100%. Incluye el análisis completo en notebooks, un pipeline productivo con inferencia batch y API, experimentos y model registry en MLflow, y el despliegue en Google Cloud Run.
 
 ---
 
@@ -34,7 +34,7 @@ Modelo de machine learning que decide si aprobar o rechazar cada transacción pa
 
 Desafío técnico de Data Science sobre un dataset de **150.000 transacciones** (15 variables anonimizadas `a`–`p`, `fecha`, `monto`, `score` y la etiqueta `fraude`) con un **5% de fraude**, entre el 8 de marzo y el 21 de abril de 2020.
 
-La pregunta no es solo *¿esta transacción es fraude?*, sino *¿conviene aprobarla?* Rechazar un fraude evita perder el 100% del monto, pero rechazar una legítima renuncia al 25%. Por eso todo el proyecto se mide en **% de la ganancia máxima posible** (la que se obtendría aprobando solo las legítimas) y el umbral de decisión se elige maximizando esa ganancia.
+El objetivo es construir un modelo que prediga si una transacción es fraudulenta y usarlo para decidir con el costo de cada error: aprobar un fraude pierde el 100% del monto, y rechazar una legítima renuncia al 25%. Por eso todo el proyecto se mide en **% de la ganancia máxima posible** (la que se obtendría aprobando solo las legítimas), y el umbral de decisión sale de ese costo.
 
 ---
 
@@ -45,14 +45,15 @@ La pregunta no es solo *¿esta transacción es fraude?*, sino *¿conviene aproba
 | ⚪ Aprobar todo | 63,4 | — | — |
 | 🔵 Ordenar por `score` | 67,4 | 0,726 | 0,177 |
 | 🟠 Baseline (LightGBM, variables originales) | 77,7 | 0,872 | 0,437 |
-| 🏆 **Modelo final** (LightGBM tuneado, conjunto `candidatas`, umbral 0,15) | **78,9 ± 1,5** | **0,890** | **0,474** |
+| 🏆 **Modelo final** (LightGBM tuneado, `candidatas` sin `perfil_onp`, umbral 0,20) | **78,9 ± 1,3** | **0,889** | **0,474** |
 
 El modelo final se validó con folds que no intervinieron en la búsqueda de hiperparámetros, y el pipeline productivo reproduce ese resultado. Las claves del camino:
 
 - 🔤 **La variable `j` cruda perjudicaba al modelo**: LightGBM memorizaba sus 8.324 categorías. Reemplazarla por su tasa de fraude (calculada dentro de cada fold) y su frecuencia fue la mejora individual más grande.
-- 🎛️ **El tuning aporta +0,4 puntos reales**: la búsqueda mostraba +0,7, pero la mitad era optimismo por elegir y evaluar con los mismos folds.
-- 🎚️ **El umbral óptimo (0,15) queda bajo el teórico (0,20)**, porque los fraudes tienen montos más altos.
-- 🔬 **`score` es la variable más valiosa** (7,5 puntos de ganancia si se desordena) y la raíz de los errores más caros.
+- 🎛️ **El tuning aporta +0,4 puntos medidos con folds nuevos**: la búsqueda mostraba +0,7, pero la mitad era optimismo por elegir y evaluar con los mismos folds.
+- 🧹 **`perfil_onp` se quitó del modelo final**: la misma ganancia con una variable menos, porque `o` ya captura su señal.
+- 🎚️ **El umbral es el teórico (0,20)**, y coincide con el óptimo validado. Prediciendo semanas futuras (73,7%, 77,1% y 79,5% en las tres últimas), un umbral algo más bajo habría ganado ~1 punto: en producción hay que recalibrarlo con etiquetas recientes.
+- 🔬 **`score` es la variable más valiosa** (8,3 puntos de ganancia si se desordena, seguida de `o` con 6,3) y la raíz de los errores más caros.
 
 Los reportes ejecutivos de cada etapa están en [`docs/reports/`](docs/reports/).
 
@@ -68,7 +69,7 @@ Los reportes ejecutivos de cada etapa están en [`docs/reports/`](docs/reports/)
 | ⚡ API online | FastAPI con validación del input, documentación en `/docs` y API key |
 | 🧪 MLflow | Tracking de los ~70 experimentos, datasets, descripciones por run y model registry con alias `champion` |
 | ☁️ Despliegue | MLflow y la API en Cloud Run; metadatos en Supabase (Postgres) y artefactos en Cloud Storage |
-| ✅ Tests | 80 tests unitarios y de integración, con **100% de cobertura** y un piso de 80% configurado |
+| ✅ Tests | 82 tests unitarios y de integración, con **100% de cobertura** y un piso de 80% configurado |
 
 ---
 
@@ -132,13 +133,13 @@ poetry run python scripts/validate_pipeline.py   # CV de 5 folds del pipeline co
 poetry run python scripts/train.py               # entrena con todo el dataset → models/fraud_pipeline.joblib (~15 s)
 poetry run python scripts/predict.py --input data/raw/dataset.csv --output data/predictions/predictions.csv
 ```
-Con `--mlflow`, `validate_pipeline.py` y `train.py` registran el run (y el modelo, en el caso de `train.py`) en MLflow.
+Con `--mlflow`, `validate_pipeline.py` y `train.py` registran el run (y el modelo, en el caso de `train.py`) en MLflow. La versión nueva recibe el alias `champion` solo si pasa el **gate de promoción**: tiene que existir una validación con los mismos parámetros, umbral y datos, y su ganancia no puede quedar más de 0,5 puntos por debajo de la del champion vigente. Si no lo pasa, se registra sin alias para poder revisarla.
 
 ### API local
 ```bash
-poetry run uvicorn fraude_shipping.production.api:app --reload
+FRAUDE_API_KEY=<una-clave> poetry run uvicorn fraude_shipping.production.api:app --reload
 ```
-Documentación interactiva en http://127.0.0.1:8000/docs. Sin la variable `FRAUDE_API_KEY`, la API no exige key.
+Documentación interactiva en http://127.0.0.1:8000/docs. La API no arranca sin `FRAUDE_API_KEY`: si la variable se pierde en un despliegue, falla cerrada en lugar de quedar abierta.
 
 ### Variables de entorno
 
@@ -146,17 +147,19 @@ Documentación interactiva en http://127.0.0.1:8000/docs. Sin la variable `FRAUD
 |---|---|
 | `MLFLOW_TRACKING_URI` | Servidor de MLflow; sin ella se usa el `mlflow.db` local |
 | `MLFLOW_TRACKING_USERNAME` / `MLFLOW_TRACKING_PASSWORD` | Credenciales del servidor de MLflow con autenticación |
-| `FRAUDE_API_KEY` | Si está definida, `/predecir` exige esa key en el header `X-API-Key` |
+| `FRAUDE_API_KEY` | Obligatoria: `/predecir` exige esa key en el header `X-API-Key` |
 | `MODEL_PATH` | Pipeline que carga la API (por defecto `models/fraud_pipeline.joblib`) |
 
 ### Tests
 ```bash
 poetry run pytest    # falla si la cobertura baja del 80%
 ```
+En GitHub Actions (`.github/workflows/tests.yml`) los tests corren en cada push, y se verifica que el `requirements.txt` de la API coincida con el lock.
 
 ### Despliegue
 ```bash
 poetry run python scripts/download_model.py   # baja fraude_shipping@champion del registry
+poetry export --only main --without-hashes -f requirements.txt -o deploy/api/requirements.txt   # solo si cambió el lock
 gcloud builds submit . --config=deploy/api/cloudbuild.yaml --substitutions=_IMAGE=<imagen>
 gcloud run deploy api-fraude --image=<imagen> --set-secrets=FRAUDE_API_KEY=api-key:latest ...
 ```
