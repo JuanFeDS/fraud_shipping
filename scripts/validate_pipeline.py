@@ -16,7 +16,7 @@ from fraude_shipping.registry import (
 )
 
 DATA_PATH = Path(__file__).resolve().parents[1] / 'data' / 'raw' / 'dataset.csv'
-# Los mismos folds nuevos con los que se validó el tuning en el notebook 04
+# La misma segunda partición (semilla 7) con la que se validó el tuning en el notebook 04
 VALIDATION_SEED = 7
 EXPERIMENT_NAME = 'fraude_shipping'
 
@@ -49,7 +49,7 @@ def log_validation(data, data_path, result):
     setup_mlflow(EXPERIMENT_NAME)
     summary = result.summary
     description = (
-        f'Validación del pipeline productivo completo con 5 folds nuevos (semilla {VALIDATION_SEED}): en cada fold '
+        f'Validación del pipeline productivo completo con 5 folds (semilla {VALIDATION_SEED}): en cada fold '
         'las tablas de j y de países se ajustan solo con train, como ocurriría en producción. '
         f"Ganancia {format_number(summary['ganancia_pct_maxima_media'], 1)}% "
         f"± {format_number(summary['ganancia_pct_maxima_desvio'], 1)} de la máxima, "
