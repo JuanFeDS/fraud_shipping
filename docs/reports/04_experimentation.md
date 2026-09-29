@@ -129,7 +129,7 @@ Superar al baseline (**77,7% de la ganancia máxima**) con cambios que se sosten
 
 - 🔬 Explicar el modelo elegido: qué variables usa, con qué forma y cuánto vale cada una en ganancia (notebook 05).
 - 🎚️ Elegir el umbral solo con el pasado (notebook 06).
-- 🎚️ En producción, corregir las probabilidades por la tasa de fraude vigente (o recalibrarlas) con el umbral fijo en 0,20, y probar un umbral por tramo de monto.
+- 🎚️ En producción, recalibrar las probabilidades con isotonic sobre etiquetas recientes (+0,9 puntos en el tiempo, notebook 06) con el umbral fijo en 0,20, y probar un umbral por tramo de monto.
 
 ## ⚠️ Supuestos y limitaciones
 

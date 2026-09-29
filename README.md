@@ -57,7 +57,7 @@ El modelo final se validó con folds que no intervinieron en la búsqueda de hip
 - 🛟 **Sin `score`, un modelo de contingencia da 77,0%**; rechazar por monto, en cambio, queda por debajo de aprobar todo.
 - 🔬 **`score` es la variable más valiosa** (8,3 puntos de ganancia si se desordena, seguida de `o` con 6,3) y la raíz de los errores más caros.
 
-Los reportes ejecutivos de cada etapa están en [`docs/reports/`](docs/reports/).
+El informe de la solución está en [`docs/report.pdf`](docs/report.pdf) y las respuestas a las preguntas 3 a 5, en [`docs/challenge_answers.pdf`](docs/challenge_answers.pdf). Los reportes ejecutivos de cada etapa están en [`docs/reports/`](docs/reports/).
 
 ---
 
